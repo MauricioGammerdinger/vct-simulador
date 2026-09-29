@@ -1,0 +1,44 @@
+VCT MANAGER — temporada 2026 (projeto pessoal)
+===============================================
+
+COMO JOGAR
+1. Extraia a pasta inteira em qualquer lugar do seu PC.
+2. Dê dois cliques em index.html. Abre no navegador, não precisa instalar nada.
+3. Escolha o time e use o botão vermelho CONTINUAR no topo pra avançar os dias
+   (» pula direto pro seu próximo jogo). O jogo salva sozinho no navegador.
+   Backup: Configurações -> Exportar save, copie o texto e guarde num .txt.
+
+O QUE TEM
+- Menu lateral: Início, Caixa de entrada, Elenco, Staff, Treino, Táticas,
+  Mercado, Competições, Estatísticas, Finanças, Configurações.
+- Perfil do jogador com atributos técnicos/mentais/físicos (1 a 20), radar,
+  habilidade e potencial em estrelas, saúde, moral e forma.
+- Staff (técnico, analista, psicólogo, fisio, olheiro) com efeito real no jogo.
+- Treino do time + treino de 3 mapas por vez.
+- Táticas por mapa (ataque e defesa) que mudam o resultado dos rounds.
+- Partida: veto, composição, plano e mapa 2D ao vivo com placar de transmissão.
+
+FOTOS E ESCUDOS
+Rostos e escudos são ilustrações geradas (não são fotos nem logos reais).
+Se quiser usar imagens suas:
+- fotos/NICK.png          -> jogador (ex.: fotos/aspas.png)
+- fotos/staff/NOME.png    -> staff (nome exato que aparece no jogo)
+- escudos/TAG.png         -> time (ex.: escudos/LOUD.png)
+Se o arquivo existir, ele aparece no lugar da ilustração.
+
+ARQUIVOS
+- index.html   -> abre o jogo
+- base-real.js -> times e jogadores (elencos do vlr.gg em 28/09/2026)
+- engine.js    -> simulação, competições, mercado, staff, táticas
+- art.js       -> avatares, escudos e mapas 2D gerados
+- ui.js        -> telas de gestão
+- match.js     -> veto, preparação e partida ao vivo
+- intro.js     -> menu inicial, criar manager, escolha de time, contrato
+- telas.js     -> Início, e-mail, estratégias, transferências, QG, patrocinadores, finanças
+
+AVISOS
+- Uso pessoal. Os atributos são gerados pelo jogo, não são oficiais.
+- Os mapas 2D são esquemáticos (sites e rotas), não as plantas reais.
+- Kickoff (tripla eliminação no real) e Play-Ins do Stage 2 estão simplificados.
+- Projeto criado sob a política "Legal Jibber Jabber" da Riot Games. A Riot
+  Games não endossa nem patrocina este projeto.
