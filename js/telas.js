@@ -101,13 +101,15 @@ VIEWS.inicio = function () {
   var nextm = "";
   if (um) {
     var opp = um.a === t.id ? um.b : um.a, odds = VM.preMatchOdds(um.a, um.b, 50); if (um.a !== t.id) odds = 1 - odds;
-    nextm = sec("Próxima partida") + '<div class="nextrow">' + G.crest(t.id, "lg") + '<div class="nx"><small>' + esc(um.evNome) + " · Bo" + um.bo + '</small><b>HOJE</b><span>' + G.pct(odds) + " por mapa</span></div>" + G.crest(opp, "lg") + '</div><div class="row center"><button class="btn primary" data-a="irPartida">Ir para a partida</button><button class="btn ghost" data-a="nav" data-v="taticas">Estratégias</button></div>';
+    nextm = sec("Próxima partida") + '<div class="nextrow">' + G.crest(t.id, "lg") + '<div class="nx"><small>' + esc(um.evNome) + " · Bo" + um.bo + '</small><b>HOJE</b><span>' + G.pct(odds) + " por mapa</span></div>" + G.crest(opp, "lg") + '</div><div class="row center"><button class="btn primary" data-a="irPartida">Ir para a partida</button><button class="btn ghost" data-a="scrim" data-v="' + opp + '" ' + (s.scrimDia === VM.talkKey() ? "disabled" : "") + ">" + (VM.scrimReport(opp) ? "Scrim feito ✓" : "Fazer scrim") + '</button><button class="btn ghost" data-a="nav" data-v="taticas">Estratégias</button></div>' +
+      '<p class="muted small">O scrim revela as tendências do adversário na preparação da partida (custa um pouco de saúde).</p>';
   }
   var evs = (s.noticias || []).slice(0, 4).map(function (n, i) {
     var r = remet(n);
     return '<button class="evrow" data-a="mailOpen" data-v="' + i + '">' + r.ico + "<span><b>" + esc(r.assunto) + "</b><small>" + esc(n.t) + "</small></span></button>";
   }).join("");
-  var obj = s.manager ? sec("Objetivo da diretoria") + '<p class="objtxt">' + esc(s.manager.objetivo || "") + "</p>" : "";
+  var cf = s.board ? s.board.conf : 60;
+  var obj = s.manager ? sec("Objetivo da diretoria") + '<p class="objtxt">' + esc(s.manager.objetivo || "") + '</p><button class="confbar" data-a="nav" data-v="diretoria"><span>Confiança do Conselho</span><i><b style="width:' + cf + "%;background:" + (window.CARREIRA ? window.CARREIRA.confColor(cf) : "var(--win)") + '"></b></i><em>' + cf + "%</em></button>" + ((s.propostas || []).length ? '<button class="evrow" data-a="nav" data-v="diretoria"><span class="mico">✉</span><span><b>' + s.propostas.length + " proposta(s) de outros clubes</b><small>Veja em Diretoria</small></span></button>" : "") : "";
   var col1 = elenco + nextm + sec("Eventos principais") + (evs || '<p class="muted">Nada ainda.</p>') + obj;
 
   /* coluna 2 */
@@ -178,6 +180,7 @@ VIEWS.caixa = function () {
   var letter = '<article class="letter"><header>' + r.ico.replace("mico", "mico big") + '<div><h2>' + esc(r.de) + "</h2><small>" + esc(r.end) + '</small><span class="subj">' + esc(r.assunto) + "</span></div><time>" + (dp ? esc(dp.wd + ", " + dp.dm) : esc(n.fase + " · " + n.temp)) + '</time><button class="btn ghost sm" data-a="mailExcluir" data-v="' + sel + '">🗑 Excluir</button></header>' + mailBody(n, r) + "</article>";
   return bar + '<div class="mailw"><div class="mlist2">' + rows + "</div>" + letter + "</div>";
 };
+ACT.scrim = function (v) { var r = VM.doScrim(v); G.persist(); G.toast(r.msg, r.ok); };
 ACT.mailSel = function (v) { UI.mailSel = +v; G.render(); };
 ACT.mailOpen = function (v) { UI.mailSel = +v; G.go("caixa"); };
 ACT.mailLerTudo = function () { (S().noticias || []).forEach(function (n) { n.lida = true; }); G.persist(); G.render(); };
@@ -210,7 +213,8 @@ VIEWS.taticas = function () {
   VM.ensureTactics(t);
   if (!UI.tacMap || s.mapas.indexOf(UI.tacMap) < 0) UI.tacMap = s.mapas[0];
   UI.tacAba = UI.tacAba || "criador";
-  var tabs = '<div class="ttabs">' + [["gerais", "Abrangentes"], ["criador", "Criador de táticas"]].map(function (x) { return '<button data-a="tacAba" data-v="' + x[0] + '" class="' + (UI.tacAba === x[0] ? "on" : "") + '">' + x[1] + "</button>"; }).join("") + "</div>";
+  var tabs = '<div class="ttabs">' + [["gerais", "Abrangentes"], ["criador", "Criador de táticas"], ["meta", "Meta do patch"]].map(function (x) { return '<button data-a="tacAba" data-v="' + x[0] + '" class="' + (UI.tacAba === x[0] ? "on" : "") + '">' + x[1] + "</button>"; }).join("") + "</div>";
+  if (UI.tacAba === "meta" && window.CARREIRA) return tabs + window.CARREIRA.metaView();
   if (UI.tacAba === "gerais") {
     return tabs + '<div class="tblwrap"><table class="lb"><thead><tr><th>Mapa</th><th>Domínio</th><th>Estilo ATQ</th><th>Plano ATQ</th><th>Site</th><th>Estilo DEF</th><th>Setup DEF</th><th></th></tr></thead><tbody>' + s.mapas.map(function (m) {
       var tc = t.taticas[m];

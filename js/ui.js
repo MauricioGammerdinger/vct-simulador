@@ -69,6 +69,7 @@ function nextPhase() { VM.nextPhase(); S().diaFase = 0; }
    Render
    --------------------------------------------------------------------- */
 function render() {
+  if (S() && S().customOrg) ART.setCustom(S().customOrg.tag, S().customOrg);
   var st = root.querySelector(".stage");
   if (st && UI.scrollTop !== 0) UI.scrollTop = st.scrollTop;
   var html;
@@ -76,12 +77,14 @@ function render() {
   var IN = window.INTRO && window.INTRO.active();
   if (IN) html = window.INTRO.view();
   else if (M && M.locked()) html = shell(M.view(), true);
+  else if (S().demitido && window.CARREIRA) html = shell(window.CARREIRA.demitido(), true);
   else html = shell((VIEWS[UI.view] || VIEWS.inicio)(), false);
   if (UI.toast) html += '<div class="toast ' + (UI.toast.ok ? "ok" : "bad") + '" role="status">' + esc(UI.toast.msg) + "</div>";
   root.innerHTML = html;
   var st2 = root.querySelector(".stage");
   if (st2) st2.scrollTop = UI.scrollTop || 0;
   UI.scrollTop = null;
+  if (!IN) { window.SFX_WANT_MUSIC = false; if (window.SFX) window.SFX.musicStop(); }
   if (IN) window.INTRO.after();
   else if (M && M.locked() && M.after) M.after();
   else if (window.TELAS) window.TELAS.after();
@@ -92,6 +95,7 @@ var NAV = [
   ["caixa", "E-mail", "M3 5h18v14H3zM3 6l9 7 9-7"],
   ["-"],
   ["elenco", "Elenco", "M8 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8zM2 21c0-4 3-7 6-7s6 3 6 7M17 11a3 3 0 1 0 0-6M22 20c0-3-2-5-4-6"],
+  ["academia", "Academia", "M12 3 2 8l10 5 10-5zM6 10v5c0 2 3 4 6 4s6-2 6-4v-5"],
   ["treino", "Treino", "M6 5v14M18 5v14M3 8v8M21 8v8M6 12h12"],
   ["taticas", "Estratégias", "M4 4h16v16H4zM8 9l3 3-3 3M13 15h4"],
   ["staff", "Staff", "M12 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8zM4 21c0-4 4-7 8-7s8 3 8 7M12 14v7"],
@@ -101,17 +105,19 @@ var NAV = [
   ["-"],
   ["competicoes", "Torneios", "M8 21h8M12 17v4M7 4h10v5a5 5 0 0 1-10 0zM7 6H4a3 3 0 0 0 3 4M17 6h3a3 3 0 0 1-3 4"],
   ["estatisticas", "Estatísticas", "M12 3a9 9 0 1 0 9 9h-9z M14 1v8h8a8 8 0 0 0-8-8z"],
+  ["hof", "Hall da fama", "M8 21h8M12 17v4M6 3h12l-1 7a5 5 0 0 1-10 0z"],
   ["-"],
   ["qg", "QG", "M3 21V9l9-6 9 6v12M9 21v-7h6v7"],
   ["-"],
   ["patrocinadores", "Patrocinadores", "M12 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8zM5 21c0-4 3-6 7-6s7 2 7 6"],
-  ["financas", "Finanças", "M3 7h18v13H3zM8 7V4h8v3M3 12h18"]
+  ["financas", "Finanças", "M3 7h18v13H3zM8 7V4h8v3M3 12h18"],
+  ["diretoria", "Diretoria", "M4 21V8l8-5 8 5v13M9 21v-5h6v5M9 11h6"]
 ];
 var NAV_BOTTOM = ["config", "Configurações", "M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6zM19 12l2-1-2-4-2 1-2-1V5h-4v2l-2 1-2-1-2 4 2 1v2l-2 1 2 4 2-1 2 1v2h4v-2l2-1 2 1 2-4-2-1z"];
 function icon(d) { return '<svg viewBox="0 0 24 24" class="ico" aria-hidden="true"><path d="' + d + '"/></svg>'; }
 
 function continueBtn(locked) {
-  if (locked) return '<span class="contw"><span class="chip live">PARTIDA EM ANDAMENTO</span></span>';
+  if (locked) return '<span class="contw"><span class="chip live">' + (S().demitido ? "DEMITIDO" : "PARTIDA EM ANDAMENTO") + '</span></span>';
   var um = VM.userMatchToday();
   if (VM.phaseOver()) {
     var f = VM.FASES[S().fase];
@@ -358,12 +364,18 @@ VIEWS.perfil = function () {
   var rad = known ? ART.radar([{ label:"Mira", v:p.aim }, { label:"Util", v:p.util }, { label:"Leitura", v:p.sense }, { label:"Clutch", v:p.clutch }, { label:"Comms", v:p.comms }, { label:"Movim.", v:p.mov || 60 }])
     : '<div class="radar-unk">Observe o jogador pra ver o radar exato.</div>';
   var st = p.stats || { mapas:0, k:0, d:0, a:0, acsSum:0 };
-  var tabs = seg("perfilAba", UI.perfilAba, [["atributos", "Atributos"], ["stats", "Estatísticas"], ["contrato", "Contrato"]], "sm");
+  var tabs = seg("perfilAba", UI.perfilAba, [["atributos", "Atributos"], ["stats", "Estatísticas"], ["contrato", "Contrato"]].concat(mine ? [["conversa", "Conversa"]] : []), "sm");
   var body;
   if (UI.perfilAba === "stats") {
     body = '<div class="statgrid"><div><b>' + st.mapas + "</b><small>Mapas</small></div><div><b>" + st.k + "</b><small>Abates</small></div><div><b>" + st.d + "</b><small>Mortes</small></div><div><b>" + st.a + "</b><small>Assist.</small></div>" +
       "<div><b>" + (st.d ? (st.k / st.d).toFixed(2) : "—") + "</b><small>K/D</small></div><div><b>" + (st.mapas ? Math.round(st.acsSum / st.mapas) : "—") + "</b><small>ACS médio</small></div></div>" +
       '<p class="muted">Estatísticas desta temporada, somando todos os campeonatos.</p>';
+  } else if (UI.perfilAba === "conversa" && window.CARREIRA) {
+    body = window.CARREIRA.conversa(p);
+  } else if (UI.perfilAba === "contrato" && p.academia) {
+    body = '<p class="muted">Jogador da sua academia. Suba ele pro elenco em Academia quando estiver pronto.</p><button class="btn primary" data-a="yPromover" data-v="' + p.id + '">Subir pro elenco</button>';
+  } else if (UI.perfilAba === "contrato" && mine && window.CARREIRA) {
+    body = window.CARREIRA.contrato(p);
   } else if (UI.perfilAba === "contrato") {
     body = '<dl class="kv"><dt>Time</dt><dd>' + (t ? teamChip(t.id, true) : "Agente livre") + "</dd><dt>Salário</dt><dd>" + money(p.salary) + "/ano</dd><dt>Contrato</dt><dd>" + p.contract + " temporada(s)</dd><dt>Valor de mercado</dt><dd>" + money(VM.valueFor(p)) + "</dd></dl>" +
       (mine ? '<div class="row"><button class="btn" data-a="renovar" data-v="' + p.id + '">Renovar 3 temporadas</button><button class="btn ghost" data-a="liberar" data-v="' + p.id + '">Liberar</button>' +
@@ -373,7 +385,7 @@ VIEWS.perfil = function () {
           : '<button class="btn primary" data-a="assinar" data-v="' + p.id + '" ' + (VM.marketOpen() ? "" : "disabled") + ">Contratar agente livre</button>"));
   } else body = attrs;
   return '<div class="row"><button class="btn ghost sm" data-a="voltar">← Voltar</button></div>' +
-    '<div class="phead card">' + face(p, "xxl") + '<div class="pinfo"><div class="k">' + (t ? esc(t.nome) : "Agente livre") + "</div><h2>" + esc(p.nick) + "</h2>" +
+    '<div class="phead card">' + face(p, "xxl") + '<div class="pinfo"><div class="k">' + (t ? esc(t.nome) : p.academia ? "Academia" : "Agente livre") + "</div><h2>" + esc(p.nick) + "</h2>" +
     '<p>' + roleTag(p.role) + " " + esc(p.nat) + " · " + p.age + " anos · " + esc(p.agents.join(", ") || "pool livre") + "</p>" +
     '<div class="pstars"><span>Habilidade</span>' + ART.stars(VM.playerStars(p)) + "<span>Potencial</span>" + (known ? ART.stars(VM.potStars(p)) : '<span class="muted">?</span>') + "</div>" +
     (!known ? '<button class="btn sm" data-a="observar" data-v="' + p.id + '">Observar (' + (S().scoutUsados || 0) + "/" + VM.scoutLimit() + " nesta fase)</button>" : "") + "</div>" +
@@ -634,7 +646,9 @@ VIEWS.financas = function () {
    Configurações
    --------------------------------------------------------------------- */
 VIEWS.config = function () {
-  return '<div class="grid2"><div class="card"><h3>Save</h3><p class="muted">O jogo salva sozinho neste navegador depois de cada dia. Pra backup ou levar pra outro PC, exporte o texto e guarde num arquivo.</p>' +
+  var A = window.SFX ? window.SFX.cfg : { sfx:false, music:false, vol:.6 };
+  var som = '<div class="card"><h3>Som</h3><div class="row"><button class="btn ' + (A.sfx ? "primary" : "ghost") + '" data-a="audioSfx">Efeitos: ' + (A.sfx ? "ligados" : "desligados") + '</button><button class="btn ' + (A.music ? "primary" : "ghost") + '" data-a="audioMusic">Música do menu: ' + (A.music ? "ligada" : "desligada") + '</button></div><label class="nf"><span>Volume <b>' + Math.round(A.vol * 100) + '%</b></span><input type="range" min="0" max="1" step="0.05" value="' + A.vol + '" data-c="audioVol"></label><p class="muted">Tiros, spike, explosão e cliques são gerados pelo navegador. Na velocidade Turbo os efeitos da partida ficam mudos.</p></div>';
+  return som + '<div class="grid2"><div class="card"><h3>Save</h3><p class="muted">O jogo salva sozinho neste navegador depois de cada dia. Pra backup ou levar pra outro PC, exporte o texto e guarde num arquivo.</p>' +
     '<div class="row"><button class="btn" data-a="exportar">Exportar save</button><button class="btn ghost" data-a="importar">Importar save</button></div>' +
     '<textarea id="saveBox" rows="4" placeholder="O save aparece aqui ao exportar. Pra importar, cole aqui e clique em Importar."></textarea></div>' +
     '<div class="card"><h3>Trocar de time / recomeçar</h3><p class="muted">Apaga a carreira atual e volta pra escolha de time.</p>' +
@@ -697,7 +711,7 @@ ACT.titular = function (pid) {
   five[five.indexOf(out)] = pid; t.lineup = five; UI.swapOut = null;
   persist(); toast(VM.P(pid).nick + " entra no lugar de " + VM.P(out).nick + ".");
 };
-ACT.renovar = function (v) { var r = VM.renewPlayer(v); persist(); toast(r.msg, r.ok); };
+ACT.renovar = function (v) { UI.backTo = UI.view; UI.perfilAba = "contrato"; go("perfil", { perfil:v }); };
 ACT.liberar = function (v) { var r = VM.releaseUser(v); persist(); if (r.ok && UI.view === "perfil") UI.view = "elenco"; toast(r.msg, r.ok); };
 ACT.vender = function (v) { UI.venda[v] = VM.sellOffer(v) || "nada"; render(); };
 ACT.aceitarVenda = function (v) { var r = VM.sellPlayer(v, UI.venda[v]); delete UI.venda[v]; persist(); if (r.ok) UI.view = "elenco"; toast(r.msg, r.ok); };
@@ -741,6 +755,9 @@ ACT.novoJogo = function () {
   });
 };
 /* change / input */
+ACT.audioSfx = function () { if (window.SFX) window.SFX.set("sfx", !window.SFX.cfg.sfx); render(); };
+ACT.audioMusic = function () { if (window.SFX) window.SFX.set("music", !window.SFX.cfg.music); render(); };
+ACT.audioVol = function (v) { if (window.SFX) { window.SFX.set("vol", +v); window.SFX.play("cash"); } render(); };
 ACT.mLiga = function (v) { UI.mercadoLiga = v; render(); };
 ACT.mRole = function (v) { UI.mercadoRole = v; render(); };
 

@@ -77,3 +77,48 @@
 .stat td,.stat th{padding:5px 6px;font-size:13px}
 .why{margin:0;padding-left:18px;display:flex;flex-direction:column;gap:8px}
 
+
+/* mapa ao vivo: bonecos, visão, utilitárias, tiros, spike, kill feed, câmera */
+.pdot .cone{opacity:.9}
+.pdot.a .cone{fill:rgba(255,77,94,.16);stroke:rgba(255,77,94,.25)}
+.pdot.b .cone{fill:rgba(63,209,184,.14);stroke:rgba(63,209,184,.22)}
+.pdot .ring{fill:none;stroke-width:4}
+.pdot .ring.r-D{stroke:var(--r-D)} .pdot .ring.r-I{stroke:var(--r-I)} .pdot .ring.r-C{stroke:var(--r-C)} .pdot .ring.r-S{stroke:var(--r-S)} .pdot .ring.r-F{stroke:var(--r-F)}
+.pdot .core{stroke:#0b0c10;stroke-width:2}
+.pdot.a .core{fill:var(--ta)} .pdot.b .core{fill:var(--tb)}
+.pdot.me .core{stroke:#fff;stroke-width:2.5}
+.pdot circle:not(.ring):not(.core){display:none}
+.pdot text.ag{fill:#0b0c10;font:800 11px Barlow,sans-serif}
+.ut.smoke circle{fill:rgba(170,180,205,.55);filter:url(#glowf);animation:smk .5s ease-out}
+.ut.smoke circle.in{fill:rgba(210,216,232,.55)}
+.ut.smoke.a circle{fill:rgba(190,150,160,.5)} .ut.smoke.b circle{fill:rgba(150,190,185,.5)}
+@keyframes smk{from{transform:scale(.2);opacity:0}}
+.ut.flash circle{fill:#fff;animation:fl .45s ease-out forwards}
+@keyframes fl{0%{r:6;opacity:1}100%{r:60;opacity:0}}
+.ut.molly circle{fill:rgba(255,120,40,.45);animation:mo .4s ease-in-out infinite alternate}
+.ut.molly circle.in{fill:rgba(255,190,60,.6)}
+@keyframes mo{to{opacity:.6}}
+.ut.trap path{fill:none;stroke:var(--def);stroke-width:2.5}
+.ut.recon circle{fill:none;stroke:var(--warn);stroke-width:3;animation:rc 1s ease-out infinite}
+@keyframes rc{0%{r:8;opacity:1}100%{r:90;opacity:0}}
+.tracer{stroke-width:2;stroke-dasharray:14 10;opacity:0;animation:tr .35s linear forwards}
+.tracer.a{stroke:#FFB4BC} .tracer.b{stroke:#B6F5EA}
+@keyframes tr{0%{opacity:1;stroke-dashoffset:40}100%{opacity:0;stroke-dashoffset:0}}
+.muzzle{fill:#FFE8A0;animation:fade .25s forwards}
+.hit{fill:none;stroke:#fff;stroke-width:2;animation:hit .5s ease-out forwards}
+@keyframes hit{from{r:4;opacity:1}to{r:26;opacity:0}}
+.boom{fill:rgba(255,120,60,.6);animation:boom .8s ease-out forwards}
+@keyframes boom{to{r:190;opacity:0}}
+.spk .trk{fill:none;stroke:rgba(255,255,255,.12);stroke-width:5}
+.spk .prog{fill:none;stroke-width:5;stroke-linecap:round}
+.spk .prog.planting{stroke:var(--warn)} .spk .prog.ticking{stroke:var(--red2)} .spk .prog.defusing{stroke:var(--def)}
+.spk .body{fill:#1b0f10;stroke:var(--red2);stroke-width:2.5} .spk path{fill:var(--red2)}
+.spk.live .body{animation:pulse .5s infinite}
+.killfeed{position:absolute;right:10px;top:10px;display:flex;flex-direction:column;gap:4px;align-items:flex-end;pointer-events:none;max-width:60%}
+.kfi{display:flex;align-items:center;gap:6px;background:rgba(8,10,14,.85);border-radius:4px;padding:3px 8px;font-size:12px;border-left:3px solid;transition:opacity .4s}
+.kfi.a{border-color:var(--ta)} .kfi.b{border-color:var(--tb)} .kfi.out{opacity:0}
+.kfi b{color:var(--ta)} .kfi.b b{color:var(--tb)} .kfi b.v{color:var(--tb)} .kfi.b b.v{color:var(--ta)}
+.kag{font-style:normal;font-weight:800;font-size:10px;background:rgba(255,255,255,.1);border-radius:3px;padding:0 4px}
+.kgun{color:#fff;font-weight:800}
+.camb{position:absolute;left:10px;bottom:10px;background:rgba(8,10,14,.8);border:1px solid rgba(255,255,255,.12);border-radius:4px;color:#C4CAD6;font-size:12px;padding:4px 8px}
+.lmap .map2d{transition:none}

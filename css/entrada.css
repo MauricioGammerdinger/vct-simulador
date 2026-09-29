@@ -107,3 +107,18 @@
 }
 
 
+
+/* criar organização */
+.orgpanel{display:grid;grid-template-columns:minmax(0,1.4fr) minmax(0,1fr);gap:18px;background:rgba(15,17,23,.85);border:1px solid var(--line2);border-radius:14px;padding:18px}
+.orgform{display:flex;flex-direction:column;gap:12px}
+.orgprev{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;text-align:center}
+.orgprev .cw.xxl{width:180px;height:180px}
+.orgprev strong{font-family:"Saira Condensed";font-size:28px;font-style:italic;text-transform:uppercase}
+.huer{width:100%;height:12px;-webkit-appearance:none;appearance:none;border-radius:6px;background:linear-gradient(90deg,hsl(0,70%,44%),hsl(60,70%,44%),hsl(120,70%,44%),hsl(180,70%,44%),hsl(240,70%,44%),hsl(300,70%,44%),hsl(359,70%,44%))}
+.sw{display:inline-block;width:12px;height:12px;border-radius:50%;margin-right:6px;vertical-align:-1px;border:1px solid rgba(255,255,255,.3)}
+.orcs{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}
+.orc{text-align:left;background:var(--bg2);border:1px solid var(--line2);border-radius:8px;padding:10px}
+.orc strong{display:block} .orc b{display:block;font-family:"JetBrains Mono";color:var(--win);font-size:13px} .orc small{color:var(--muted);font-size:11.5px}
+.orc.on{border-color:var(--red);background:linear-gradient(135deg,var(--redbg),var(--bg2))}
+.audiob{position:absolute;z-index:3;right:16px;top:16px;background:rgba(0,0,0,.4);border:1px solid rgba(255,255,255,.15);border-radius:20px;color:#fff;padding:6px 12px;font-size:13px}
+@media (max-width:860px){.orgpanel,.orcs{grid-template-columns:minmax(0,1fr)}}

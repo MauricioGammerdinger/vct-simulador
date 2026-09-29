@@ -26,8 +26,11 @@ function esc(s) { return String(s).replace(/[&<>"']/g, function (c) { return { "
 /* ---------------------------------------------------------------------
    Cores dos times
    --------------------------------------------------------------------- */
-var cache = {};
+var cache = {}, CUSTOM = {};
+function setCustom(tag, o) { CUSTOM[tag] = o; delete cache[tag]; }
+function clearCustom(tag) { delete CUSTOM[tag]; }
 function teamColors(tag) {
+  if (CUSTOM[tag]) return { c1:CUSTOM[tag].c1, c2:CUSTOM[tag].c2, hue:CUSTOM[tag].hue };
   if (cache[tag]) return cache[tag];
   var r = rng(h32("cor:" + tag));
   var hue = Math.floor(r() * 360);
@@ -122,10 +125,11 @@ function face(name, tag, cls, opts) {
 /* ---------------------------------------------------------------------
    Escudos
    --------------------------------------------------------------------- */
-function crest(tag, size) {
-  var col = teamColors(tag), r = rng(h32("crest:" + tag));
+function crest(tag, size, co) {
+  var col = co || teamColors(tag), r = rng(h32("crest:" + tag));
   var id = "c" + (h32(tag) % 1e8);
-  var shape = pick(r, ["M50 4 L92 16 L88 62 Q84 84 50 98 Q16 84 12 62 L8 16 Z", "M50 4 L94 26 L94 70 L50 96 L6 70 L6 26 Z", "M12 8 H88 V58 Q88 86 50 98 Q12 86 12 58 Z", "M50 3 C74 3 96 20 96 50 C96 80 74 97 50 97 C26 97 4 80 4 50 C4 20 26 3 50 3Z"]);
+  var SH = ["M50 4 L92 16 L88 62 Q84 84 50 98 Q16 84 12 62 L8 16 Z", "M50 4 L94 26 L94 70 L50 96 L6 70 L6 26 Z", "M12 8 H88 V58 Q88 86 50 98 Q12 86 12 58 Z", "M50 3 C74 3 96 20 96 50 C96 80 74 97 50 97 C26 97 4 80 4 50 C4 20 26 3 50 3Z"];
+  var shape = pick(r, SH); var cs = co || CUSTOM[tag]; if (cs && cs.shape != null) shape = SH[cs.shape];
   var pat = r();
   var txt = tag.length > 4 ? tag.slice(0, 4) : tag;
   var fs = txt.length <= 2 ? 34 : txt.length === 3 ? 27 : 21;
@@ -157,7 +161,13 @@ function layout(map, sites) {
     Sunset:{ A:[235, 245], B:[775, 185], mid:[530, 300] },
     Summit:{ A:[265, 170], B:[735, 175], mid:[500, 320] },
     Haven:{ A:[165, 255], B:[500, 240], C:[835, 250], mid:[330, 385] },
-    Lotus:{ A:[175, 225], B:[500, 250], C:[830, 265], mid:[665, 390] }
+    Lotus:{ A:[175, 225], B:[500, 250], C:[830, 265], mid:[665, 390] },
+    Bind:{ A:[200, 240], B:[800, 240], mid:[500, 420] },
+    Breeze:{ A:[240, 170], B:[790, 230], mid:[520, 330] },
+    Icebox:{ A:[210, 200], B:[780, 260], mid:[480, 360] },
+    Fracture:{ A:[180, 300], B:[820, 290], mid:[500, 250] },
+    Pearl:{ A:[230, 215], B:[775, 205], mid:[505, 355] },
+    Corrode:{ A:[220, 250], B:[790, 195], mid:[470, 340] }
   }[map];
   if (PRE) {
     sites.forEach(function (sk) { L.sites[sk] = { x:j(PRE[sk][0], 8), y:j(PRE[sk][1], 8) }; });
@@ -340,6 +350,6 @@ function trophy() {
     '<circle cx="150" cy="46" r="4" fill="#FFF7D6" class="spark"/></svg>';
 }
 
-window.ART = { trophy:trophy, avatar:avatar, face:face, crest:crest, teamColors:teamColors, layout:layout, mapSVG:mapSVG, along:along,
+window.ART = { setCustom:setCustom, clearCustom:clearCustom, trophy:trophy, avatar:avatar, face:face, crest:crest, teamColors:teamColors, layout:layout, mapSVG:mapSVG, along:along,
   ring:ring, radar:radar, stars:starsHTML, mapCard:mapCard };
 })();

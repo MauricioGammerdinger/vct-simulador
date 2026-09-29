@@ -85,6 +85,7 @@ function viewMenu() {
       return '<button data-a="' + it[0] + '" data-v="' + (it[2] || "") + '" class="' + (i === 0 ? "first" : "") + '">' + it[1] + "</button>";
     }).join("") + "</nav></div>" +
     '<div class="menutrophy">' + ART.trophy() + "</div>" + info +
+    '<button class="audiob" data-a="iAudio">' + (window.SFX && window.SFX.cfg.music ? "🔊 Música ligada" : "🔇 Música desligada") + "</button>" +
     '<p class="menufoot">Projeto de fã sob a política "Legal Jibber Jabber" da Riot Games. Não é endossado pela Riot Games.</p>' +
     (modal ? '<div class="imodal" data-a="iFechar"><div class="imbox" data-a="iStop">' + modal + '<button class="btn ghost sm iclose" data-a="iFechar">Fechar</button></div></div>' : "") + "</div>";
 }
@@ -115,9 +116,31 @@ function viewManager() {
 function viewOrgTipo() {
   return '<div class="iscreen"><div class="ibg"></div><button class="btn ghost sm iback" data-a="iStep" data-v="manager">← Manager</button><div class="orgs">' +
     '<button class="orgc" data-a="iStep" data-v="time"><span class="orgi">' + ART.trophy() + '</span><strong>Selecionar uma organização existente</strong><small>Escolha um dos ' + window.VALDB.times.length + " times das ligas VCT e dos Challengers. Gerencie o elenco e leve até as vitórias.</small></button>" +
-    '<div class="orgc off"><span class="orgi lock">🔒</span><strong>Criar organização</strong><small>Monte sua própria org do zero, com nome e escudo. Em breve.</small></div></div></div>';
+    '<button class="orgc" data-a="iStep" data-v="criarorg"><span class="orgi">' + orgPreview() + '</span><strong>Criar organização</strong><small>Monte sua própria org do zero: nome, tag, cores e escudo. Começa num Challengers, com elenco modesto.</small></button></div></div>';
 }
 
+var ORG = { nome:"", tag:"", hue:350, c2:"#FFFFFF", shape:0, liga:"CBR", orc:"modesto" };
+var ORC = { investidor:["Investidor", 320000, "Dinheiro pra montar um elenco competitivo logo."], modesto:["Modesto", 140000, "O suficiente pra alguns reforços."], garagem:["Garagem", 45000, "Quase nada. Vai ter que revelar jogadores."] };
+function orgColors() { return { c1:"hsl(" + ORG.hue + ",70%,44%)", c2:ORG.c2, hue:ORG.hue, shape:ORG.shape }; }
+function orgPreview(size) {
+  var tag = (ORG.tag || "NEW").toUpperCase().slice(0, 4);
+  return '<span class="cw ' + (size || "xl") + '">' + ART.crest(tag, null, orgColors()) + "</span>";
+}
+function viewCriarOrg() {
+  var chal = ["CBR", "CNA", "CLAT", "CEMEA", "CPAC", "CCN"];
+  var c2s = [["#FFFFFF", "Branco"], ["#111111", "Preto"], ["#F2C75C", "Dourado"], ["hsl(" + ((ORG.hue + 180) % 360) + ",70%,60%)", "Complementar"]];
+  return '<div class="iscreen"><div class="ibg"></div><button class="btn ghost sm iback" data-a="iStep" data-v="orgtipo">← Voltar</button><h1 class="ititle">Criar organização</h1>' +
+    '<div class="orgpanel"><div class="orgform">' +
+    '<label class="mf"><span>Nome da organização *</span><input data-org="nome" value="' + esc(ORG.nome) + '" maxlength="22" placeholder="ex.: Pops Esports"></label>' +
+    '<label class="mf"><span>Tag (2 a 4 letras) *</span><input data-org="tag" value="' + esc(ORG.tag) + '" maxlength="4" placeholder="POPS" style="text-transform:uppercase"></label>' +
+    '<label class="mf"><span>Cor principal</span><input type="range" min="0" max="359" value="' + ORG.hue + '" data-org="hue" class="huer"></label>' +
+    '<div class="mf"><span>Cor secundária</span><div class="cchips">' + c2s.map(function (c) { return '<button class="cchip ' + (ORG.c2 === c[0] ? "on" : "") + '" data-a="iOrgC2" data-v="' + esc(c[0]) + '"><i class="sw" style="background:' + c[0] + '"></i>' + c[1] + "</button>"; }).join("") + "</div></div>" +
+    '<div class="mf"><span>Formato do escudo</span><div class="cchips">' + ["Clássico", "Hexágono", "Brasão", "Redondo"].map(function (n, i) { return '<button class="cchip ' + (ORG.shape === i ? "on" : "") + '" data-a="iOrgShape" data-v="' + i + '">' + n + "</button>"; }).join("") + "</div></div>" +
+    '<label class="mf"><span>Liga de estreia</span><select data-orgsel="liga">' + chal.map(function (l) { return '<option value="' + l + '" ' + (ORG.liga === l ? "selected" : "") + ">" + esc(S().ligasNome[l]) + "</option>"; }).join("") + "</select></label>" +
+    '<div class="mf"><span>Orçamento inicial</span><div class="orcs">' + Object.keys(ORC).map(function (k) { return '<button class="orc ' + (ORG.orc === k ? "on" : "") + '" data-a="iOrgOrc" data-v="' + k + '"><strong>' + ORC[k][0] + "</strong><b>" + VM.money(ORC[k][1]) + "</b><small>" + ORC[k][2] + "</small></button>"; }).join("") + "</div></div></div>" +
+    '<div class="orgprev" id="orgprev">' + orgPreview("xxl") + '<strong id="orgname">' + esc(ORG.nome || "Sua organização") + '</strong><span class="muted">Entra no lugar do time mais fraco da liga, com 5 jogadores gerados.</span></div></div>' +
+    '<div class="row center ibtns"><button class="btn primary big" data-a="iOrgOk">Fundar organização →</button></div></div>';
+}
 function viewTime() {
   var s = S();
   var ids = Object.keys(s.teams).filter(function (id) { return s.teams[id].liga === I.liga; })
@@ -177,6 +200,7 @@ function view() {
   if (I.step === "manager") return viewManager();
   if (I.step === "orgtipo") return viewOrgTipo();
   if (I.step === "time" && S()) return viewTime();
+  if (I.step === "criarorg" && S()) return viewCriarOrg();
   if (I.step === "contrato" && S() && I.sel) return viewContrato();
   I.step = "menu"; return viewMenu();
 }
@@ -185,6 +209,7 @@ function startLoading(tag, then) {
   I.step = "loading"; G.render();
 }
 function after() {
+  window.SFX_WANT_MUSIC = true; if (window.SFX) window.SFX.musicStart();
   if (I.step === "loading" && I.load) {
     var L = I.load;
     var tick = function (now) {
@@ -223,6 +248,7 @@ function freshWorld() {
   VM.newWorld(window.VALDB, (Date.now() ^ Math.floor(Math.random() * 1e9)) >>> 0);
 }
 
+ACT.iAudio = function () { if (!window.SFX) return; window.SFX.set("music", !window.SFX.cfg.music); if (window.SFX.cfg.music) window.SFX.musicStart(); G.render(); };
 ACT.iNovo = function () { I.mgr = newMgr(); I.step = "manager"; I.modal = null; G.render(); };
 ACT.iModal = function (v) { I.modal = v; G.render(); };
 ACT.iFechar = function () { I.modal = null; G.render(); };
@@ -246,6 +272,20 @@ ACT.iMgrOk = function () {
   if (!S() || S().userTeam) freshWorld();
   I.step = "orgtipo"; G.render();
 };
+ACT.iOrgC2 = function (v) { ORG.c2 = v; G.render(); };
+ACT.iOrgShape = function (v) { ORG.shape = +v; G.render(); };
+ACT.iOrgOrc = function (v) { ORG.orc = v; G.render(); };
+ACT.iOrgOk = function () {
+  var nome = ORG.nome.trim(), tag = ORG.tag.trim().toUpperCase();
+  if (nome.length < 3) { G.toast("Dê um nome à organização (mínimo 3 letras).", false); return; }
+  if (!/^[A-Z0-9]{2,4}$/.test(tag)) { G.toast("A tag precisa ter de 2 a 4 letras ou números.", false); return; }
+  if (!S() || S().userTeam) freshWorld();
+  var c = orgColors();
+  var r = VM.createOrg({ nome:nome, tag:tag, liga:ORG.liga, cash:ORC[ORG.orc][1], c1:c.c1, c2:c.c2, hue:c.hue, shape:c.shape });
+  if (!r.ok) { G.toast(r.msg, false); return; }
+  ART.setCustom(tag, c);
+  I.sel = r.id; I.signed = false; I.sigData = null; I.step = "contrato"; G.toast(r.msg); G.render();
+};
 ACT.iLiga = function (v) { I.liga = v; I.sel = null; G.render(); };
 ACT.iSel = function (v) { I.sel = v; G.render(); };
 ACT.iAssinarTime = function () { I.signed = false; I.sigData = null; I.step = "contrato"; G.render(); };
@@ -266,6 +306,12 @@ ACT.iContrato = function () {
 root.addEventListener("input", function (e) {
   var el = e.target;
   if (el.hasAttribute("data-mgr")) { I.mgr[el.getAttribute("data-mgr")] = el.value; return; }
+  if (el.hasAttribute("data-org")) {
+    var k = el.getAttribute("data-org"); ORG[k] = k === "hue" ? +el.value : el.value;
+    var pv = document.getElementById("orgprev");
+    if (pv) { pv.querySelector(".cw").outerHTML = orgPreview("xxl"); var nm = document.getElementById("orgname"); if (nm) nm.textContent = ORG.nome || "Sua organização"; }
+    return;
+  }
   if (el.hasAttribute("data-mattr")) {
     var k = el.getAttribute("data-mattr"), m = I.mgr, v = +el.value;
     var others = used(m) - m.attrs[k];
@@ -277,6 +323,7 @@ root.addEventListener("input", function (e) {
 });
 root.addEventListener("change", function (e) {
   var el = e.target;
+  if (el.hasAttribute("data-orgsel")) { ORG.liga = el.value; return; }
   if (el.hasAttribute("data-mgrsel")) { var k = el.getAttribute("data-mgrsel"); I.mgr[k] = k === "nacao" ? el.value : +el.value; }
 });
 

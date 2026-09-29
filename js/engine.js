@@ -48,7 +48,7 @@ var AGENTS = Object.keys(AGENT_ROLE).sort();
 var ROLE_NAME = { D:"Duelista", I:"Iniciador", C:"Controlador", S:"Sentinela", F:"Flex" };
 
 /* Chance base de o ATAQUE vencer um round em cada mapa (valores do jogo). */
-var MAP_ATK = { Ascent:.47, Abyss:.49, Haven:.50, Lotus:.48, Split:.45, Sunset:.48, Summit:.50 };
+var MAP_ATK = { Ascent:.47, Abyss:.49, Haven:.50, Lotus:.48, Split:.45, Sunset:.48, Summit:.50, Bind:.48, Breeze:.51, Icebox:.50, Fracture:.49, Pearl:.47, Corrode:.49 };
 
 /* Peso de cada atributo por função, para calcular o geral (OVR). */
 var ROLE_W = {
@@ -237,7 +237,7 @@ function staffLvl(team, role) { var s = staffOf(team, role); return s ? s.nivel 
 /* ---------------------------------------------------------------------
    Táticas por mapa e lado
    --------------------------------------------------------------------- */
-var SITES = { Ascent:["A","B"], Abyss:["A","B"], Haven:["A","B","C"], Lotus:["A","B","C"], Split:["A","B"], Sunset:["A","B"], Summit:["A","B"] };
+var SITES = { Ascent:["A","B"], Abyss:["A","B"], Haven:["A","B","C"], Lotus:["A","B","C"], Split:["A","B"], Sunset:["A","B"], Summit:["A","B"], Bind:["A","B"], Breeze:["A","B"], Icebox:["A","B"], Fracture:["A","B"], Pearl:["A","B"], Corrode:["A","B"] };
 var ATK_PLANOS = { padrao:"Padrão (espalha e decide no meio)", exec:"Execução no site", split:"Dividir o site", rush:"Rush", fake:"Fake e rotação", lurk:"Lurk + contato" };
 var DEF_SETUPS = { padrao:"Padrão (2-1-2)", stack:"Stack num site", agressivo:"Agressivo (pegar espaço)", retake:"Ceder e retomar" };
 function defaultTactic(map) {
@@ -337,7 +337,7 @@ function newWorld(db, seed) {
   Object.keys(S.teams).forEach(function (id) { S.cp[id] = 0; });
   S.treinoMapas = S.mapas.slice(0, 3);
   S.transacoes = []; S.transfers = []; S.finHist = []; S.finAcc = { receita:0, despesa:0 };
-  eloInit();
+  eloInit(); metaInit(); S.academia = []; S.academiaNivel = 1; S.hof = { temporadas:[], lendas:[] };
   buildPhase(0);
   return S;
 }
@@ -404,6 +404,7 @@ function compAnalysis(team, comp) {
     if (p.agents.length) {
       if (p.agents.indexOf(a) < 0) { pen -= (p.role === "F" || p.role === role) ? 2.5 : 4.5; }
     } else if (!(p.role === "F" || p.role === role)) pen -= 2;
+    pen += metaBonus(a) * 0.6;
     perPlayer[p.id] = pen;
     if (pen <= -4) notes.push(p.nick + " fora da função (" + a + ")");
     else if (pen < 0) notes.push(p.nick + " fora do pool (" + a + ")");
@@ -493,10 +494,11 @@ function resolveAtk(s, who, buy) {
     plano = pc && pc !== "igual" ? pc : (buy === "eco" && tac.atk.eco && tac.atk.eco !== "igual") ? tac.atk.eco : tac.atk.plano;
     site = tac.atk.site === "variar" ? pick(sites) : tac.atk.site;
   } else {
-    plano = buy === "eco" ? (R() < .55 ? "rush" : "padrao") : wpick(AI_ATK);
+    var pf = teamProfile(team);
+    plano = buy === "eco" ? (R() < .55 ? "rush" : "padrao") : wpickObj(pf.planos);
     /* IA evita repetir site que acabou de tomar stack */
     var hist = who === "A" ? s.histA : s.histB, last = hist[hist.length - 1];
-    site = pick(sites);
+    site = wpickObj(pf.sites, sites);
     if (last && last.stacked && last.site === site && R() < .7) site = pick(sites.filter(function (x) { return x !== site; }));
   }
   if (sites.indexOf(site) < 0) site = sites[0];
@@ -514,7 +516,7 @@ function resolveDef(s, who, atkWho) {
   var sense = sum(activeFive(team).map(function (p) { return p.sense; })) / 5;
   var readP = 0.22 + 0.08 * (staffLvl(team, "analista") - 2.5) + (sense - 72) * 0.01;
   if (top && cnt[top] / Math.max(1, hist.length) >= 0.6 && R() < readP) return { setup:"stack", site:top, rotacao:"media" };
-  var setup = wpick([["padrao", 55], ["agressivo", 17], ["retake", 15], ["stack", 13]]);
+  var setup = wpickObj(teamProfile(team).def);
   return { setup:setup, site:pick(sites), rotacao:pick(["rapida", "media", "media", "lenta"]) };
 }
 
@@ -751,6 +753,7 @@ function seriesResult(aId, bId, bo, maps, wa, wb, vetoLog) {
 
 function applySeriesEffects(res) {
   eloUpdate(res);
+  if (S.userTeam && (res.a === S.userTeam || res.b === S.userTeam)) boardDelta(res.winner === S.userTeam ? 1 : -1.5, (res.winner === S.userTeam ? "Vitória" : "Derrota") + " contra " + T(res.winner === S.userTeam ? res.loser : res.winner).tag);
   [res.a, res.b].forEach(function (tid) {
     var won = res.winner === tid;
     var psi = staffLvl(T(tid), "psicologo");
@@ -1243,6 +1246,7 @@ function finalizeEvent(ev) {
     S.historico.push({ temporada:S.temporada, evento:ev.nome, campeao:champ,
       vice:ranking.filter(function (id) { return ev.colocacao[id] === 2; })[0] });
     if (champ === S.userTeam) S.conquistas.push(S.temporada + " — " + ev.nome);
+    activeFive(T(champ)).forEach(function (p) { p.titulos = (p.titulos || 0) + 1; });
   }
   var top3 = ranking.filter(function (id) { return ev.colocacao[id] <= 3; })
     .sort(function (a, b) { return ev.colocacao[a] - ev.colocacao[b]; });
@@ -1263,6 +1267,7 @@ function finalizeEvent(ev) {
     S.qualChampions[ev.liga] = two.concat(rest.slice(0, 2));
   }
   if (S.userTeam && ev.colocacao[S.userTeam]) {
+    boardEvent(ev);
     var pos = ev.colocacao[S.userTeam];
     news("Você terminou o " + ev.nome + " em " + posLabel(pos) + ".", pos <= 2 ? "bom" : "info");
   }
@@ -1340,8 +1345,11 @@ function nextPhase() {
     return;
   }
   chargePayroll();
+  boardPhaseEnd();
+  squadMood(); youthTick(); clauseRaids();
   buildPhase(S.fase + 1);
   aiMarket(ri(3, 7));
+  if (R() < 0.5) newPatch();
   news("Começa: " + FASES[S.fase].nome + ".", "info");
 }
 
@@ -1402,10 +1410,15 @@ function decayForm() {
 }
 
 function offseason() {
+  hofSeason();
   news("Fim da temporada " + S.temporada + ". Janela de transferências aberta.", "titulo");
+  boardPhaseEnd();
   Object.keys(S.players).forEach(function (id) {
     var p = S.players[id];
+    if (p.aposentado) return;
+    var gap = (p.pot || ovr(p)) - ovr(p);
     var d = p.age <= 21 ? ri(1, 3) : p.age <= 24 ? ri(0, 2) : p.age <= 27 ? ri(-1, 1) : ri(-2, 0);
+    if (p.age <= 24 && gap > 6) d += 1; if (gap <= 0 && d > 0) d = 0;
     ["aim", "util", "sense", "clutch", "comms"].forEach(function (a) { p[a] = clamp(p[a] + d + ri(-1, 1), 35, 97); });
     p.age++;
     if (p.teamId) p.contract--;
@@ -1426,7 +1439,10 @@ function offseason() {
     }
   });
   S.qualMasters = {}; S.qualChampions = {}; S.stage2 = {}; S.chalRank = {};
+  retirements(); regens();
   aiMarket(ri(10, 18));
+  if (S.userTeam) genYouth(ri(2, 3));
+  rotateMaps();
 }
 function newSeason() {
   S.temporada++;
@@ -1541,7 +1557,7 @@ function releaseUser(pid) {
 function scoutLimit() { return 3 + staffLvl(T(S.userTeam), "olheiro") * 3; }
 function isScouted(pid) {
   var p = P(pid); if (!p) return false;
-  return p.teamId === S.userTeam || !!S.scout[pid];
+  return p.teamId === S.userTeam || p.academia === S.userTeam || !!S.scout[pid];
 }
 function observe(pid) {
   if (isScouted(pid)) return { ok:true, msg:"Já observado." };
@@ -1598,10 +1614,15 @@ function migrate() {
   if (!S.elo) eloInit();
   S.transacoes = S.transacoes || []; S.transfers = S.transfers || []; S.finHist = S.finHist || []; S.finAcc = S.finAcc || { receita:0, despesa:0 };
   if (S.userTeam) { if (!S.qg) initQG(); if (!S.patrocinio) autoSponsors(T(S.userTeam)); }
-  S.versao = 4;
+  if (!S.meta) metaInit();
+  if (S.userTeam && !S.board) boardInit();
+  S.academia = S.academia || []; if (!S.academiaNivel) S.academiaNivel = 1;
+  S.hof = S.hof || { temporadas:[], lendas:[] };
+  S.mapas.forEach(function (m) { ensureMap(m); });
+  S.versao = 5;
 }
 function initQG() { var l = qgLevels(T(S.userTeam)); S.qg = {}; Object.keys(QG_ITEMS).forEach(function (k) { S.qg[k] = l[k]; }); }
-function setUserTeam(id) { S.userTeam = id; S.qg = null; initQG(); autoSponsors(T(id)); }
+function setUserTeam(id) { S.userTeam = id; S.qg = null; initQG(); autoSponsors(T(id)); if (!S.board) boardInit(); if (!S.academia || !S.academia.length) { S.academiaNivel = S.academiaNivel || 1; genYouth(3); } }
 
 /* ---------------------------------------------------------------------
    Clube: livro-caixa, transferências, QG, patrocínio, ranking
@@ -1736,6 +1757,336 @@ function eloUpdate(res) {
   S.elo[a] = Math.round(S.elo[a] + k * (sa - ea)); S.elo[b] = Math.round(S.elo[b] - k * (sa - ea));
 }
 
+/* ---------------------------------------------------------------------
+   Diretoria, conversas, negociação, academia, perfis da IA, meta,
+   rotação de mapas, aposentadoria, novos talentos e hall da fama
+   --------------------------------------------------------------------- */
+function userTeam() { return S && S.userTeam ? T(S.userTeam) : null; }
+function boardInit() { S.board = { conf:62, hist:[], avisado:false }; S.propostas = []; S.demitido = false; }
+function expectedPos(t, ev) {
+  var n = Object.keys(ev.colocacao).length || 12, lv = t.nivel || 2;
+  var frac = { 5:.17, 4:.34, 3:.5, 2:.67, 1:.8 }[lv] || .5;
+  if (ev.tipo === "MASTERS" || ev.tipo === "CHAMPIONS") frac = Math.min(.85, frac + .25);
+  return Math.max(1, Math.round(n * frac));
+}
+function boardDelta(d, motivo) {
+  if (!S.board) boardInit();
+  var b = S.board, antes = b.conf;
+  b.conf = clamp(Math.round(b.conf + d), 0, 100);
+  b.hist.unshift({ temp:S.temporada, fase:S.fase, dia:S.diaFase || 0, d:Math.round(d), motivo:motivo, conf:b.conf });
+  if (b.hist.length > 40) b.hist.length = 40;
+  if (b.conf < 35 && antes >= 35) news("O Conselho está preocupado com os resultados. Sua posição começa a ficar em risco (confiança " + b.conf + "%).", "ruim");
+  if (b.conf >= 80 && antes < 80) news("O Conselho está muito satisfeito com o seu trabalho (confiança " + b.conf + "%).", "bom");
+}
+function boardEvent(ev) {
+  var u = S.userTeam; if (!u || !ev.colocacao[u]) return;
+  var pos = ev.colocacao[u], exp = expectedPos(T(u), ev);
+  var d = clamp((exp - pos) * 3, -14, 14);
+  if (pos === 1) d += 12;
+  boardDelta(d, ev.nome + ": " + posLabel(pos) + " (esperado: até " + exp + "º)");
+}
+function boardPhaseEnd() {
+  var t = userTeam(); if (!t) return;
+  if (!S.board) boardInit();
+  if (t.cash < 0) boardDelta(-6, "Caixa negativo");
+  if (S.board.conf < 15) {
+    S.demitido = true;
+    news("Você foi demitido da " + t.nome + ". O Conselho decidiu mudar o comando.", "ruim");
+    S.propostas = genOffers(true);
+    return;
+  }
+  S.propostas = (S.propostas || []).filter(function (o) { return o.ate >= S.temporada * 10 + S.fase; });
+  if (S.board.conf >= 55 && R() < 0.35 + (S.board.conf - 55) / 120) {
+    var nov = genOffers(false);
+    nov.forEach(function (o) { news("Proposta: a " + T(o.team).nome + " quer você como manager. Veja em Diretoria.", "bom"); });
+    S.propostas = (S.propostas || []).concat(nov).slice(-3);
+  }
+}
+function genOffers(demitido) {
+  var me = userTeam(), lv = me.nivel || 2;
+  var pool = Object.keys(S.teams).filter(function (id) {
+    var t = S.teams[id]; if (id === me.id) return false;
+    return demitido ? (t.nivel || 2) <= Math.max(2, lv - 1) : (t.nivel || 2) >= lv && (t.nivel || 2) <= lv + 1;
+  });
+  shuffle(pool);
+  return pool.slice(0, demitido ? 3 : ri(1, 2)).map(function (id) {
+    var t = T(id); return { team:id, sal:isChal(t.liga) ? 40000 + (t.nivel || 2) * 6000 : 140000 + (t.nivel || 2) * 25000, ate:S.temporada * 10 + S.fase + 1 };
+  });
+}
+function acceptOffer(i) {
+  var o = (S.propostas || [])[i]; if (!o) return { ok:false, msg:"Proposta expirou." };
+  var old = userTeam(), t = T(o.team);
+  setUserTeam(t.id);
+  S.demitido = false; S.propostas = []; S.board = { conf:60, hist:[], avisado:false };
+  (S.academia || []).forEach(function (id) { var y = P(id); if (y) { y.academia = null; y.aposentado = true; } });
+  S.academia = []; S.academiaNivel = 1;
+  if (S.manager) S.manager.objetivo = objetivoPara(t);
+  news("Você deixou a " + (old ? old.nome : "—") + " e assinou com a " + t.nome + ". Objetivo: " + objetivoPara(t).toLowerCase() + ".", "titulo");
+  genYouth(3);
+  return { ok:true, msg:"Bem-vindo à " + t.nome + "!" };
+}
+function rejectOffer(i) { (S.propostas || []).splice(i, 1); return { ok:true, msg:"Proposta recusada." }; }
+function objetivoPara(t) {
+  if (isChal(t.liga)) return t.nivel >= 4 ? "Ser campeão do Challengers e ir aos Play-Ins" : t.nivel >= 3 ? "Chegar aos playoffs do Challengers" : "Fazer uma campanha digna e revelar jogadores";
+  return t.nivel >= 5 ? "Ganhar a liga e disputar o Champions" : t.nivel >= 4 ? "Classificar para um Masters" : t.nivel >= 3 ? "Chegar aos playoffs do Stage" : "Evitar a lanterna e crescer na temporada";
+}
+
+/* conversas */
+function talkKey() { return S.temporada + ":" + S.fase + ":" + (S.diaFase || 0); }
+function talk(pid, tipo) {
+  var p = P(pid); if (!p || p.teamId !== S.userTeam) return { ok:false, msg:"Só dá pra conversar com jogadores do seu elenco." };
+  if (p.conversa === talkKey()) return { ok:false, msg:p.nick + " já conversou com você hoje." };
+  p.conversa = talkKey();
+  var five = activeFive(T(S.userTeam)).map(function (x) { return x.id; }), tit = five.indexOf(pid) >= 0, mot = (mgr("motivacao") - 10) * 0.3;
+  var r;
+  if (tipo === "elogiar") {
+    if (p.form >= 0) { p.morale = clamp(p.morale + 6 + mot, 20, 99); r = p.nick + " gostou do elogio. Moral subiu."; }
+    else { p.morale = clamp(p.morale + 1, 20, 99); r = p.nick + " agradeceu, mas sabe que não está bem."; }
+  } else if (tipo === "cobrar") {
+    if (p.form < 0) { p.form = clamp(p.form + 0.7, -3, 3); p.morale = clamp(p.morale - 3, 20, 99); r = p.nick + " aceitou a cobrança e vai treinar mais. Forma subiu um pouco."; }
+    else { p.morale = clamp(p.morale - 9, 20, 99); r = p.nick + " achou a cobrança injusta. Moral caiu."; }
+  } else if (tipo === "motivar") {
+    p.form = clamp(p.form + 0.35, -3, 3); p.morale = clamp(p.morale + 2 + mot, 20, 99); r = p.nick + " está pilhado pro próximo jogo.";
+  } else if (tipo === "prometer") {
+    if (tit) return { ok:false, msg:p.nick + " já é titular." };
+    p.promessa = { tipo:"titular", ate:S.fase + 1, temp:S.temporada }; p.pedidoSaida = false;
+    p.morale = clamp(p.morale + 12, 20, 99); r = "Você prometeu vaga de titular a " + p.nick + " até a próxima fase. Não esqueça de cumprir.";
+  } else if (tipo === "acalmar") {
+    if (!p.pedidoSaida) return { ok:false, msg:p.nick + " não pediu pra sair." };
+    if (R() < 0.45 + (mgr("motivacao") - 10) * 0.03) { p.pedidoSaida = false; p.morale = clamp(p.morale + 8, 20, 99); r = p.nick + " aceitou ficar por enquanto."; }
+    else { p.morale = clamp(p.morale - 4, 20, 99); r = p.nick + " continua querendo sair."; }
+  }
+  return { ok:true, msg:r };
+}
+function squadMood() {
+  var t = userTeam(); if (!t) return;
+  var five = activeFive(t).map(function (x) { return x.id; });
+  t.roster.map(P).forEach(function (p) {
+    var tit = five.indexOf(p.id) >= 0;
+    if (p.promessa && p.promessa.ate <= S.fase && p.promessa.temp === S.temporada) {
+      if (tit) { p.morale = clamp(p.morale + 5, 20, 99); news(p.nick + " ficou feliz: você cumpriu a promessa de titularidade.", "bom"); }
+      else { p.morale = clamp(p.morale - 22, 20, 99); p.pedidoSaida = true; news(p.nick + " ficou revoltado: a promessa de titularidade não foi cumprida. Ele pediu pra sair.", "ruim"); }
+      p.promessa = null;
+    }
+    if (!tit && !p.promessa && p.age >= 20 && ovr(p) >= 68) {
+      p.morale = clamp(p.morale - 7, 20, 99);
+      if (p.morale < 42 && !p.pedidoSaida) { p.pedidoSaida = true; news(p.nick + " está insatisfeito no banco e pediu pra ser negociado.", "ruim"); }
+    }
+    if (tit && p.pedidoSaida && p.morale > 60) p.pedidoSaida = false;
+  });
+}
+
+/* negociação de contrato */
+function contractAsk(p) {
+  var base = salaryFor(ovr(p));
+  var f = 1.08 + (70 - p.morale) / 220 + (p.pedidoSaida ? 0.15 : 0);
+  return Math.round(base * f / 1000) * 1000;
+}
+function negotiate(pid, sal, anos, multa) {
+  var p = P(pid), me = userTeam();
+  if (!p || p.teamId !== me.id) return { ok:false, msg:"Jogador não é seu." };
+  p.negTent = p.negKey === talkKey() ? (p.negTent || 0) : 0; p.negKey = talkKey();
+  if (p.negTent >= 3) return { ok:false, msg:p.nick + " cansou de negociar hoje. Tente outro dia." };
+  p.negTent++;
+  var ask = contractAsk(p);
+  var pref = p.age >= 27 ? 3 : p.age <= 21 ? 2 : 2;
+  var need = ask * (anos === pref ? 0.96 : 1.02) * (multa >= valueFor(p) * 2.5 ? 1.06 : multa < valueFor(p) * 1.2 ? 0.97 : 1);
+  need *= 1 - (mgr("negociacao") - 10) * 0.012;
+  if (p.pedidoSaida) need *= 1.08;
+  if (sal >= need) {
+    p.salary = Math.round(sal / 1000) * 1000; p.contract = anos; p.multa = Math.round(multa / 1000) * 1000;
+    p.morale = clamp(p.morale + 6, 20, 99); p.pedidoSaida = false; p.negTent = 0;
+    news(p.nick + " renovou por " + anos + " temporada(s): " + money(p.salary) + "/ano, multa " + money(p.multa) + ".", "bom");
+    return { ok:true, msg:p.nick + " assinou a renovação!" };
+  }
+  if (p.negTent >= 3) p.morale = clamp(p.morale - 5, 20, 99);
+  return { ok:false, msg:p.nick + " recusou. O empresário dele pede algo perto de " + money(Math.round(need / 1000) * 1000) + "/ano.", ask:Math.round(need / 1000) * 1000 };
+}
+function clauseRaids() {
+  var me = userTeam(); if (!me || me.roster.length <= 5) return;
+  me.roster.map(P).forEach(function (p) {
+    if (me.roster.length <= 5 || ovr(p) < 76) return;
+    var clause = p.multa || valueFor(p) * 2;
+    if (clause > valueFor(p) * 1.4 || R() > 0.22) return;
+    var buyers = Object.keys(S.teams).filter(function (id) { var t = S.teams[id]; return id !== me.id && !isChal(t.liga) && t.cash > clause * 1.2 && t.roster.length < 7; });
+    if (!buyers.length) return;
+    var b = T(pick(buyers));
+    b.cash -= clause; me.cash += clause;
+    me.roster = me.roster.filter(function (id) { return id !== p.id; }); if (me.lineup) me.lineup = me.lineup.filter(function (id) { return id !== p.id; });
+    p.teamId = b.id; p.contract = 2; b.roster.push(p.id);
+    ledger(me.id, "Multa rescisória", clause, "Saída de " + p.nick + " para a " + b.tag);
+    tlog(p, me.id, b.id, clause, "Multa rescisória");
+    news("A " + b.nome + " pagou a multa rescisória de " + p.nick + " (" + money(clause) + ") e levou o jogador.", "ruim");
+  });
+}
+
+/* academia */
+function genYouth(n) {
+  var me = userTeam(); if (!me) return;
+  S.academia = S.academia || [];
+  var lv = S.academiaNivel || 1;
+  n = Math.min(n, 8 - S.academia.length);
+  for (var i = 0; i < n; i++) {
+    var p = genFiller(me.liga, ri(50, 58), null);
+    p.age = ri(16, 18); p.academia = me.id; p.contract = 0;
+    p.pot = clamp(Math.round(68 + lv * 4 + R() * 18), ovr(p) + 8, 95);
+    p.salary = 3000;
+    S.academia.push(p.id);
+  }
+}
+function youthTick() {
+  var lv = S.academiaNivel || 1;
+  (S.academia || []).forEach(function (id) {
+    var p = P(id); if (!p) return;
+    var gap = (p.pot || 70) - ovr(p); if (gap <= 0) return;
+    var ch = 0.12 + lv * 0.05 + (mgr("desenvolvimento") - 10) * 0.01;
+    ["aim", "util", "sense", "clutch", "comms"].forEach(function (a) { if (R() < ch) p[a] = Math.min(97, p[a] + 1); });
+  });
+}
+function academyCost() { return [0, 60000, 150000, 0][S.academiaNivel || 1]; }
+function upgradeAcademy() {
+  var me = userTeam(), lv = S.academiaNivel || 1; if (lv >= 3) return { ok:false, msg:"Academia já está no nível máximo." };
+  var c = academyCost(); if (me.cash < c) return { ok:false, msg:"Caixa insuficiente (" + money(c) + ")." };
+  me.cash -= c; S.academiaNivel = lv + 1; ledger(me.id, "Academia", -c, "Academia nível " + (lv + 1));
+  return { ok:true, msg:"Academia subiu pro nível " + (lv + 1) + ". Jovens evoluem mais rápido e chegam melhores." };
+}
+function promoteYouth(pid) {
+  var me = userTeam(), p = P(pid);
+  if (me.roster.length >= 7) return { ok:false, msg:"Elenco cheio (máximo de 7)." };
+  S.academia = S.academia.filter(function (x) { return x !== pid; });
+  p.academia = null; p.teamId = me.id; p.contract = 3; p.salary = Math.max(8000, Math.round(salaryFor(ovr(p)) * 0.6 / 1000) * 1000);
+  me.roster.push(pid); tlog(p, null, me.id, 0, "Academia");
+  news(p.nick + " subiu da academia pro elenco principal.", "bom");
+  return { ok:true, msg:p.nick + " agora faz parte do elenco." };
+}
+function releaseYouth(pid) { S.academia = (S.academia || []).filter(function (x) { return x !== pid; }); var p = P(pid); if (p) { p.academia = null; p.aposentado = true; } return { ok:true, msg:"Jovem dispensado da academia." }; }
+
+/* perfis táticos da IA e scrims */
+function teamProfile(t) {
+  if (t.perfil) return t.perfil;
+  var r = mulberry(hashStr("perfil:" + t.id));
+  var pl = {}; ["padrao", "exec", "split", "rush", "fake", "lurk"].forEach(function (k) { pl[k] = 5 + Math.floor(r() * 30); });
+  var fav = ["padrao", "exec", "split", "rush", "fake", "lurk"][Math.floor(r() * 6)]; pl[fav] += 35;
+  var siteW = { A:0.5 + r() * 1.5, B:0.5 + r() * 1.5, C:0.5 + r() * 1.5 };
+  var df = { padrao:40 + r() * 20, stack:5 + r() * 25, agressivo:5 + r() * 25, retake:5 + r() * 20 };
+  t.perfil = { planos:pl, sites:siteW, def:df, fav:fav };
+  return t.perfil;
+}
+function wpickObj(o, keys) { var ks = keys || Object.keys(o), tot = sum(ks.map(function (k) { return o[k]; })), x = R() * tot; for (var i = 0; i < ks.length; i++) { x -= o[ks[i]]; if (x <= 0) return ks[i]; } return ks[0]; }
+function doScrim(oppId) {
+  var me = userTeam();
+  if (S.scrimDia === talkKey()) return { ok:false, msg:"Vocês já fizeram scrim hoje." };
+  S.scrimDia = talkKey(); S.scrimFeito = S.scrimFeito || {}; S.scrimFeito[oppId] = S.temporada + ":" + S.fase;
+  me.roster.map(P).forEach(function (p) { p.saude = clamp((p.saude == null ? 100 : p.saude) - 4, 30, 100); });
+  var o = T(oppId), best = S.mapas.slice().sort(function (a, b) { return o.mapProf[b] - o.mapProf[a]; })[0];
+  me.mapProf[best] = clamp(me.mapProf[best] + 0.6, 30, 95);
+  return { ok:true, msg:"Scrim contra a " + o.tag + " feito. Relatório liberado na preparação da partida." };
+}
+function scrimReport(oppId) {
+  if (!S.scrimFeito || S.scrimFeito[oppId] !== S.temporada + ":" + S.fase) return null;
+  var t = T(oppId), pf = teamProfile(t);
+  var tp = sum(Object.keys(pf.planos).map(function (k) { return pf.planos[k]; }));
+  var planos = Object.keys(pf.planos).sort(function (a, b) { return pf.planos[b] - pf.planos[a]; }).slice(0, 3).map(function (k) { return { k:k, pct:Math.round(pf.planos[k] / tp * 100) }; });
+  var ts = pf.sites.A + pf.sites.B, sites = [{ k:"A", pct:Math.round(pf.sites.A / ts * 100) }, { k:"B", pct:Math.round(pf.sites.B / ts * 100) }];
+  var td = sum(Object.keys(pf.def).map(function (k) { return pf.def[k]; }));
+  var def = Object.keys(pf.def).sort(function (a, b) { return pf.def[b] - pf.def[a]; }).slice(0, 2).map(function (k) { return { k:k, pct:Math.round(pf.def[k] / td * 100) }; });
+  var mapas = S.mapas.slice().sort(function (a, b) { return t.mapProf[b] - t.mapProf[a]; });
+  return { planos:planos, sites:sites, def:def, fortes:mapas.slice(0, 2), fracos:mapas.slice(-2) };
+}
+
+/* meta de agentes */
+function metaInit() { S.meta = {}; AGENTS.forEach(function (a) { S.meta[a] = 0; }); S.patch = { v:"12.00", buff:[], nerf:[] }; }
+function metaBonus(agent) { return S.meta ? (S.meta[agent] || 0) : 0; }
+function newPatch() {
+  if (!S.meta) metaInit();
+  var n = ri(2, 3), buff = [], nerf = [], pool = shuffle(AGENTS.slice());
+  pool.slice(0, n).forEach(function (a) { S.meta[a] = clamp(S.meta[a] + 1, -2, 2); buff.push(a); });
+  pool.slice(n, n * 2).forEach(function (a) { S.meta[a] = clamp(S.meta[a] - 1, -2, 2); nerf.push(a); });
+  var parts = S.patch.v.split("."), v = (+parts[0]) + "." + ("0" + ((+parts[1]) + 1)).slice(-2);
+  if (+parts[1] >= 10) v = (+parts[0] + 1) + ".00";
+  S.patch = { v:v, buff:buff, nerf:nerf };
+  news("Patch " + v + ": buffs em " + buff.join(", ") + "; nerfs em " + nerf.join(", ") + ".", "titulo");
+}
+
+/* rotação de mapas */
+var MAP_BENCH = ["Bind", "Breeze", "Icebox", "Fracture", "Pearl", "Corrode"];
+function ensureMap(m) {
+  Object.keys(S.teams).forEach(function (id) {
+    var t = S.teams[id];
+    if (t.mapProf[m] == null) { var r = mulberry(hashStr(id + ":" + m)); t.mapProf[m] = clamp(Math.round(46 + (t.nivel || 2) * 4 + (r() * 20 - 10)), 30, 88); }
+    ensureTactics(t);
+  });
+}
+function rotateMaps() {
+  var out = pick(S.mapas), bench = MAP_BENCH.concat(["Ascent", "Abyss", "Haven", "Lotus", "Split", "Sunset", "Summit"]).filter(function (m) { return S.mapas.indexOf(m) < 0 && m !== out; });
+  var inn = pick(bench);
+  S.mapas = S.mapas.map(function (m) { return m === out ? inn : m; });
+  ensureMap(inn);
+  S.treinoMapas = (S.treinoMapas || []).filter(function (m) { return S.mapas.indexOf(m) >= 0; });
+  while (S.treinoMapas.length < 3) { var c = S.mapas.filter(function (m) { return S.treinoMapas.indexOf(m) < 0; })[0]; if (!c) break; S.treinoMapas.push(c); }
+  if (S.mapas.indexOf(S.treinoMapa) < 0) S.treinoMapa = S.mapas[0];
+  news("Rotação de mapas: " + out + " sai e " + inn + " entra no map pool da temporada " + (S.temporada + 1) + ".", "titulo");
+}
+
+/* aposentadoria, novos talentos e hall da fama */
+function hofSeason() {
+  S.hof = S.hof || { temporadas:[], lendas:[] };
+  var ps = Object.keys(S.players).map(P).filter(function (p) { return p.stats && p.stats.mapas >= 8 && p.teamId && !isChal(T(p.teamId).liga); });
+  ps.sort(function (a, b) { return b.stats.acsSum / b.stats.mapas - a.stats.acsSum / a.stats.mapas; });
+  var mvp = ps[0];
+  var camp = (S.historico || []).filter(function (h) { return h.temporada === S.temporada; });
+  var champ = camp.filter(function (h) { return /Champions/.test(h.evento); })[0];
+  var u = userTeam();
+  S.hof.temporadas.unshift({ temp:S.temporada, champ:champ ? champ.campeao : null, mvp:mvp ? { pid:mvp.id, nick:mvp.nick, team:mvp.teamId, acs:Math.round(mvp.stats.acsSum / mvp.stats.mapas) } : null,
+    titulos:camp.map(function (h) { return { ev:h.evento, t:h.campeao }; }), user:u ? { team:u.id, conquistas:(S.conquistas || []).filter(function (c) { return c.indexOf(String(S.temporada)) === 0; }), elo:(S.elo || {})[u.id] || 0 } : null });
+}
+function retirements() {
+  var feitos = [];
+  Object.keys(S.players).forEach(function (id) {
+    var p = S.players[id];
+    if (p.aposentado || p.academia) return;
+    var ch = p.age >= 30 ? (p.age - 29) * 0.18 : (p.age >= 28 && ovr(p) < 62 ? 0.22 : 0);
+    if (!ch || R() > ch) return;
+    var team = p.teamId ? T(p.teamId) : null;
+    if (team) releasePlayer(p);
+    S.freeAgents = S.freeAgents.filter(function (x) { return x !== id; });
+    p.aposentado = true; p.teamId = null;
+    if (!p.gerado || ovr(p) >= 76) feitos.push(p);
+    S.hof = S.hof || { temporadas:[], lendas:[] };
+    if (ovr(p) >= 80 || (p.titulos || 0) > 0) S.hof.lendas.unshift({ nick:p.nick, nat:p.nat, role:p.role, idade:p.age, ovr:ovr(p), time:team ? team.nome : "—", temp:S.temporada });
+  });
+  feitos.slice(0, 5).forEach(function (p) { news(p.nick + " anunciou a aposentadoria aos " + p.age + " anos.", "info"); });
+  Object.keys(S.teams).forEach(function (tid) { var t = S.teams[tid]; while (t.roster.length < 5) aiSignFreeAgent(t); });
+}
+function regens() {
+  var ligas = ["AMER", "AMER", "EMEA", "EMEA", "PAC", "PAC", "CN", "CBR", "CNA", "CLAT", "CEMEA", "CPAC", "CCN"];
+  for (var i = 0; i < 26; i++) {
+    var p = genFiller(pick(ligas), ri(58, 72), null);
+    p.age = ri(17, 19); p.contract = 0; p.pot = clamp(Math.round(ovr(p) + 8 + R() * 18), ovr(p), 95);
+    S.freeAgents.push(p.id);
+  }
+  S.freeAgents = S.freeAgents.filter(function (id) { var p = P(id); if (p.age >= 27 && ovr(p) < 66) { p.aposentado = true; return false; } return true; });
+  news("Nova safra: 26 jovens talentos entraram no mercado de agentes livres.", "info");
+}
+
+function createOrg(o) {
+  var ids = Object.keys(S.teams).filter(function (id) { return S.teams[id].liga === o.liga; });
+  if (!ids.length) return { ok:false, msg:"Liga inválida." };
+  var tagUp = o.tag.toUpperCase();
+  if (Object.keys(S.teams).some(function (id) { return S.teams[id].tag.toUpperCase() === tagUp; })) return { ok:false, msg:"Já existe um time com a tag " + tagUp + "." };
+  ids.sort(function (a, b) { return (S.teams[a].nivel || 2) - (S.teams[b].nivel || 2) || strength(a) - strength(b); });
+  var t = S.teams[ids[0]], antigo = t.nome;
+  t.roster.slice().forEach(function (pid) { releasePlayer(P(pid)); });
+  t.lineup = null; t.nome = o.nome; t.tag = tagUp; t.nivel = 1; t.tecnico = S.manager ? S.manager.nick : "—"; t.cash = o.cash; t.incerto = false; t.custom = true;
+  var base = baseForTier(t.liga, 1);
+  ["C", "I", "S", "D", "F"].forEach(function (role) { var p = genFiller(t.liga, base + ri(-1, 2), t.id, role); p.contract = 2; t.roster.push(p.id); });
+  S.mapas.forEach(function (m) { t.mapProf[m] = ri(44, 54); });
+  t.perfil = null; t.taticas = null; ensureTactics(t);
+  var tec = staffOf(t, "tecnico"); if (tec) tec.nome = pick(FIRST) + " " + pick(LAST);
+  if (S.elo) S.elo[t.id] = 900;
+  S.customOrg = { id:t.id, tag:tagUp, c1:o.c1, c2:o.c2, hue:o.hue, shape:o.shape, substituiu:antigo };
+  return { ok:true, id:t.id, msg:o.nome + " foi fundada e entra no lugar da " + antigo + "." };
+}
 function money(v) {
   var neg = v < 0; v = Math.abs(v);
   var s = v >= 1e6 ? (v / 1e6).toFixed(2).replace(/\.?0+$/, "") + " mi" : v >= 1e3 ? Math.round(v / 1e3) + " mil" : String(v);
@@ -1770,7 +2121,7 @@ function importSave(txt) { S = JSON.parse(txt); rng = mulberry((S.seed + S.nextI
 window.VM = {
   get S() { return S; },
   CHAL:CHAL, isChal:isChal, EXTRA:EXTRA, SITES:SITES, ATK_PLANOS:ATK_PLANOS, DEF_SETUPS:DEF_SETUPS,
-  STAFF_ROLES:STAFF_ROLES, STAFF_NOME:STAFF_NOME, STAFF_EFEITO:STAFF_EFEITO, staffOf:staffOf, staffLvl:staffLvl, staffPayroll:staffPayroll, incomeFor:incomeFor, baseIncome:baseIncome, sponsorIncome:sponsorIncome, SPONSORS:SPONSORS, sponsorById:sponsorById, sponsorReq:sponsorReq, setSponsor:setSponsor, QG_ITEMS:QG_ITEMS, qgBonus:qgBonus, qgCost:qgCost, qgUpgrade:qgUpgrade, qgEff:qgEff, setUserTeam:setUserTeam, eloInit:eloInit, MGR_ATTRS:MGR_ATTRS, mgr:mgr,
+  STAFF_ROLES:STAFF_ROLES, STAFF_NOME:STAFF_NOME, STAFF_EFEITO:STAFF_EFEITO, staffOf:staffOf, staffLvl:staffLvl, staffPayroll:staffPayroll, incomeFor:incomeFor, createOrg:createOrg, boardDelta:boardDelta, expectedPos:expectedPos, acceptOffer:acceptOffer, rejectOffer:rejectOffer, talk:talk, contractAsk:contractAsk, negotiate:negotiate, genYouth:genYouth, academyCost:academyCost, upgradeAcademy:upgradeAcademy, promoteYouth:promoteYouth, releaseYouth:releaseYouth, doScrim:doScrim, scrimReport:scrimReport, metaBonus:metaBonus, teamProfile:teamProfile, MAP_BENCH:MAP_BENCH, objetivoPara:objetivoPara, talkKey:talkKey, baseIncome:baseIncome, sponsorIncome:sponsorIncome, SPONSORS:SPONSORS, sponsorById:sponsorById, sponsorReq:sponsorReq, setSponsor:setSponsor, QG_ITEMS:QG_ITEMS, qgBonus:qgBonus, qgCost:qgCost, qgUpgrade:qgUpgrade, qgEff:qgEff, setUserTeam:setUserTeam, eloInit:eloInit, MGR_ATTRS:MGR_ATTRS, mgr:mgr,
   hireStaff:hireStaff, fireStaff:fireStaff, observe:observe, isScouted:isScouted, scoutLimit:scoutLimit, mapGain:mapGain,
   playerStars:playerStars, potStars:potStars, ensureTactics:ensureTactics, defaultTactic:defaultTactic, tacticTerm:tacticTerm, AGENTS:AGENTS, AGENT_ROLE:AGENT_ROLE, ROLE_NAME:ROLE_NAME, MAP_ATK:MAP_ATK, BUY_NAME:BUY_NAME, FASES:FASES, TREINOS:TREINOS,
   P:P, T:T, ovr:ovr, valueFor:valueFor, salaryFor:salaryFor, money:money, posLabel:posLabel,

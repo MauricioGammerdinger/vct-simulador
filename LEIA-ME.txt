@@ -16,7 +16,16 @@ O QUE TEM
   staff, treino por mapa e estratégias por mapa, lado e tipo de round.
 - Olheiros, mercado, transferências, torneios e estatísticas.
 - QG com equipamentos, patrocinadores com camisa e finanças com gráficos.
-- Partida: veto, composição, plano e mapa 2D ao vivo com placar de transmissão.
+- Partida: veto, composição, plano e mapa 2D ao vivo com placar de transmissão,
+  cone de visão, smokes, flashes, molotov, tiros, spike com timer, kill feed e
+  câmera que segue a ação.
+- Diretoria com confiança, demissão e propostas de outros clubes.
+- Conversas com jogadores, promessas, pedidos de saída e renovação negociada
+  (salário, anos e multa rescisória).
+- Academia de jovens, criação de organização própria, scrims que revelam o
+  adversário, patches de agentes, rotação de mapas, aposentadorias, novos
+  talentos e hall da fama.
+- Sons e música gerados pelo navegador (ligue/desligue em Configurações).
 
 ARQUIVOS
 - index.html          -> abre o jogo (só a estrutura da página)
@@ -28,7 +37,9 @@ ARQUIVOS
     responsivo.css    -> ajustes pra telas menores
     entrada.css       -> menu inicial, criar manager, contrato
     tema-manager.css  -> visual estilo manager, QG, patrocínio, finanças
+    carreira.css      -> diretoria, conversas, academia, hall da fama, meta
 - js/                 -> código do jogo
+    sfx.js            -> sons e música (Web Audio, sem arquivos)
     base-real.js      -> times e jogadores (elencos do vlr.gg em 28/09/2026)
     engine.js         -> simulação, competições, mercado, staff, táticas, finanças
     art.js            -> avatares, escudos, troféu e mapas 2D gerados
@@ -36,7 +47,9 @@ ARQUIVOS
     telas.js          -> Início, e-mail, estratégias, transferências, QG,
                          patrocinadores, finanças
     match.js          -> veto, preparação e partida ao vivo
-    intro.js          -> menu inicial, criar manager, escolha de time, contrato
+    carreira.js       -> diretoria, conversas, contrato, academia, hall da fama
+    intro.js          -> menu inicial, criar manager, criar organização,
+                         escolha de time, contrato
 - fotos/, escudos/    -> suas imagens opcionais (veja abaixo)
 
 Os estilos carregam na ordem que está no index.html; os de baixo sobrescrevem
