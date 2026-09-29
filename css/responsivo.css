@@ -1,0 +1,35 @@
+/* VCT Manager — ajustes para telas menores */
+/* ---------- responsivo ---------- */
+@media (max-width:1100px){
+.livegrid{grid-template-columns:1fr 1fr}
+.lmap{grid-column:1 / -1;grid-row:1}
+.scards{grid-template-columns:repeat(3,minmax(0,1fr))}
+.attrs{grid-template-columns:repeat(2,minmax(0,1fr))}
+}
+@media (max-width:860px){
+.game{display:block;height:auto}
+.side{flex-direction:row;align-items:center;overflow-x:auto;overflow-y:hidden;border-right:0;border-bottom:1px solid var(--line);position:sticky;top:0;z-index:20}
+.side .brand,.side .club,.sidefoot,.navsep{display:none}
+.navs{flex-direction:row;padding:6px}
+.navi{flex:none;padding:8px 10px} .navi span{display:none}
+.navi.on::before{left:8px;right:8px;top:auto;bottom:0;width:auto;height:3px}
+.mainc{height:auto}
+.stage{overflow:visible;padding:14px 16px 26px}
+.topbar{padding:10px 16px}
+.grid2,.grid2.wide,.grid3,.pickgrid,.tacgrid,.mail{grid-template-columns:minmax(0,1fr)}
+.tdetail{position:static}
+.lineup{grid-template-columns:repeat(3,minmax(0,1fr))}
+.scards{grid-template-columns:repeat(2,minmax(0,1fr))}
+.attrs{grid-template-columns:minmax(0,1fr)}
+.bcast{grid-template-columns:1fr 1fr} .bc-c{grid-column:1 / -1;grid-row:1}
+.bc-t b{font-size:32px}
+.ag{grid-template-columns:auto 1fr} .ag select{grid-column:1 / -1}
+.hrow{grid-template-columns:auto 1fr 36px} .hrow .bar,.hrow .muted{display:none}
+.mhead{flex-wrap:wrap} .mt small{display:none}
+}
+@media (max-width:520px){
+.livegrid{grid-template-columns:minmax(0,1fr)}
+.pcards{grid-template-columns:repeat(2,minmax(0,1fr))}
+.vsbig{gap:10px} .topbar h1{font-size:22px} .pcard .st5 i{width:10px;height:10px}
+}
+

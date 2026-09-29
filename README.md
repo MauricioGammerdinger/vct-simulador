@@ -19,18 +19,30 @@ O progresso fica salvo no próprio navegador. Pra fazer backup, use Configuraç�
 - Olheiros, mercado, transferências entre times da IA, QG com equipamentos, patrocinadores e finanças.
 - Partida com veto, composição e mapa 2D ao vivo com placar de transmissão.
 
-## Arquivos
+## Estrutura
 
-| Arquivo | Função |
-|---|---|
-| `index.html` | abre o jogo (estilos e ordem dos scripts) |
-| `base-real.js` | times e jogadores (elencos públicos do vlr.gg, set/2026) |
-| `engine.js` | simulação, competições, mercado, staff, táticas, finanças |
-| `art.js` | avatares, escudos, troféu e mapas 2D gerados em SVG |
-| `ui.js` | casca do jogo e telas de gestão |
-| `telas.js` | Início, e-mail, estratégias, transferências, QG, patrocinadores, finanças |
-| `match.js` | veto, preparação e partida ao vivo |
-| `intro.js` | menu inicial, criação de manager, escolha de time e contrato |
+```
+index.html          estrutura da página
+css/
+  base.css          cores, reset, botões, tabelas, avatares
+  layout.css        menu lateral, topo e área principal
+  telas.css         telas de gestão
+  partida.css       veto, preparação e partida ao vivo
+  responsivo.css    ajustes para telas menores
+  entrada.css       menu inicial, criar manager, contrato
+  tema-manager.css  visual estilo manager, QG, patrocínio, finanças
+js/
+  base-real.js      times e jogadores (elencos públicos do vlr.gg, set/2026)
+  engine.js         simulação, competições, mercado, staff, táticas, finanças
+  art.js            avatares, escudos, troféu e mapas 2D gerados em SVG
+  ui.js             casca do jogo e telas de gestão
+  telas.js          Início, e-mail, estratégias, transferências, QG, patrocinadores, finanças
+  match.js          veto, preparação e partida ao vivo
+  intro.js          menu inicial, criação de manager, escolha de time e contrato
+fotos/, escudos/    imagens opcionais suas
+```
+
+Os estilos carregam na ordem do `index.html` — os de baixo sobrescrevem os de cima, então mantenha essa ordem.
 
 ## Fotos e escudos próprios
 
