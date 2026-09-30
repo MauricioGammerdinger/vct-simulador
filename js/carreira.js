@@ -36,8 +36,10 @@ VIEWS.diretoria = function () {
     var x = VM.T(o.team);
     return '<div class="prop">' + G.crest(x.id, "lg") + "<div><strong>" + esc(x.nome) + "</strong><small>" + esc(s.ligasNome[x.liga]) + " · " + ART.stars(x.nivel) + "</small><small>Salário oferecido: " + money(o.sal) + "/ano · Objetivo: " + esc(VM.objetivoPara(x).toLowerCase()) + '</small></div><div class="row"><button class="btn primary sm" data-a="propAceitar" data-v="' + i + '">Aceitar</button><button class="btn ghost sm" data-a="propRecusar" data-v="' + i + '">Recusar</button></div></div>';
   }).join("");
-  return '<div class="dgrid"><div><div class="dhead">' + gauge(b.conf) + "<div><small>Confiança do Conselho</small><strong style=\"color:" + confColor(b.conf) + '">' + confTxt(b.conf) + "</strong><p class=\"muted\">Abaixo de 15% no fim de uma fase, você é demitido. Vitórias, boas colocações e contas no azul aumentam a confiança.</p></div></div>" +
+  return '<div class="dgrid"><div><div class="dhead">' + gauge(b.conf) + "<div><small>Confiança do Conselho</small><strong style=\"color:" + confColor(b.conf) + '">' + confTxt(b.conf) + "</strong><p class=\"muted\">Abaixo de " + VM.dif().fire + "% no fim de uma fase, você é demitido. Vitórias, boas colocações e contas no azul aumentam a confiança.</p></div></div>" +
     sec("Objetivo da temporada") + '<p class="objtxt">' + esc(s.manager ? s.manager.objetivo : VM.objetivoPara(t)) + "</p>" +
+    (VM.objetivoCheck(t) ? '<p class="cond ok">✓ Já cumprido nesta temporada.</p>' : '<p class="cond warn">Ainda não cumprido. Vale +20 de confiança se conseguir e −' + Math.round(28 * VM.dif().board) + " se não conseguir até o fim da temporada.</p>") +
+    '<p class="muted small">Dificuldade: <b>' + VM.dif().nome + "</b> · demissão abaixo de " + VM.dif().fire + "%.</p>" +
     sec("Expectativa nas competições atuais") + (exp ? '<ul class="explist">' + exp + "</ul>" : '<p class="muted">Nenhuma competição sua em andamento.</p>') +
     sec("Propostas de outros clubes") + (props || '<p class="muted">Nenhuma proposta no momento. Clubes procuram managers com a confiança da diretoria alta.</p>') + "</div>" +
     "<div>" + sec("Avaliações recentes") + (hist || '<p class="empty">SEM AVALIAÇÕES AINDA</p>') + "</div></div>";

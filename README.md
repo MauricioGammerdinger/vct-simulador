@@ -14,6 +14,7 @@ O progresso fica salvo no próprio navegador. Pra fazer backup, use Configuraç�
 
 - Ligas VCT (Americas, EMEA, Pacific, China) e todos os Challengers (Brasil, NA, LATAM, EMEA, Pacific, China).
 - Temporada completa: Kickoff, Masters Santiago, Stage 1, Masters London, Stage 2 (com Play-Ins) e Champions — e carreira de várias temporadas.
+- 4 dificuldades (Fácil, Normal, Difícil, Pesadelo): força e inteligência da IA, dinheiro, lesões, preços e paciência da diretoria.
 - Criação de manager com atributos que afetam o jogo, ou criação de uma organização própria.
 - Elenco, perfil de jogador, conversas, renovação negociada (salário, anos, multa rescisória), staff, academia de jovens.
 - Treino por mapa e estratégias por mapa, lado e tipo de round; scrims que revelam as tendências do adversário.

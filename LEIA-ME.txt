@@ -10,7 +10,8 @@ COMO JOGAR
    Backup: Configurações -> Exportar save, copie o texto e guarde num .txt.
 
 O QUE TEM
-- Menu inicial, criação de manager com atributos, escolha de time e contrato.
+- Menu inicial, criação de manager com atributos, 4 dificuldades (Fácil,
+  Normal, Difícil, Pesadelo), escolha de time e contrato.
 - Início com linha do tempo da temporada, próximos torneios e ranking global.
 - E-mail, elenco, perfil de jogador (atributos 1 a 20, radar, potencial),
   staff, treino por mapa e estratégias por mapa, lado e tipo de round.

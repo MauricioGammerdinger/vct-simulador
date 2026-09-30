@@ -222,7 +222,9 @@ var MGR_ATTRS = {
 };
 function mgr(k) { return S && S.manager && S.manager.attrs && S.manager.attrs[k] != null ? S.manager.attrs[k] : 10; }
 function baseIncome(t) { return isChal(t.liga) ? 45000 : 150000; }
-function incomeFor(t) { var base = baseIncome(t) + sponsorIncome(t); return t.id === S.userTeam ? Math.round(base * (1 + (mgr("financas") - 10) * 0.015) / 1000) * 1000 : base; }
+function incomeFor(t) { var base = baseIncome(t) + sponsorIncome(t); return t.id === S.userTeam ? Math.round(base * dif().money * (S.spPerf || 1) * (1 + (mgr("financas") - 10) * 0.015) / 1000) * 1000 : base; }
+function salaryCap(t) { return (isChal(t.liga) ? 560000 : 1750000) * (S.dif === "pesadelo" ? 0.9 : S.dif === "facil" ? 1.2 : 1); }
+function payroll(t) { return sum(t.roster.map(function (pid) { return P(pid).salary; })) + staffPayroll(t); }
 function newStaff(role, nivel, nome, teamId, chal) {
   var id = "s" + (S.nextId++);
   var st = { id:id, role:role, nivel:clamp(nivel, 1, 5), teamId:teamId || null,
@@ -367,7 +369,8 @@ function autoComp(team, map) {
         cand = AGENTS.filter(function (a) { return AGENT_ROLE[a] === need && !used[a]; }).slice(0, 1);
       }
       if (!cand.length) return;
-      var sc = (p.role === need ? 3 : 0) + (p.agents.indexOf(cand[0]) === 0 ? 1 : 0) + ovr(p) / 100;
+      cand.sort(function (a, b) { return metaBonus(b) - metaBonus(a); });
+      var sc = (p.role === need ? 3 : 0) + (p.agents.indexOf(cand[0]) === 0 ? 1 : 0) + metaBonus(cand[0]) * 0.4 + ovr(p) / 100;
       if (sc > bestScore) { bestScore = sc; best = p; bestAgent = cand[0]; }
     });
     if (best) {
@@ -384,13 +387,15 @@ function autoComp(team, map) {
   return comp;
 }
 
+function healthy(p) { return !(p.lesao && p.lesao.dias > 0); }
 function activeFive(team) {
   var list = team.roster.map(P);
-  if (team.lineup && team.lineup.length === 5 && team.lineup.every(function (id) { return team.roster.indexOf(id) >= 0; })) {
-    return team.lineup.map(P);
-  }
-  list.sort(function (a, b) { return ovr(b) - ovr(a); });
-  return list.slice(0, 5);
+  var five;
+  if (team.lineup && team.lineup.length === 5 && team.lineup.every(function (id) { return team.roster.indexOf(id) >= 0; })) five = team.lineup.map(P);
+  else { list.sort(function (a, b) { return ovr(b) - ovr(a); }); five = list.slice(0, 5); }
+  if (five.every(healthy)) return five;
+  var bench = list.filter(function (p) { return five.indexOf(p) < 0 && healthy(p); }).sort(function (a, b) { return ovr(b) - ovr(a); });
+  return five.map(function (p) { return healthy(p) || !bench.length ? p : bench.shift(); });
 }
 
 function compAnalysis(team, comp) {
@@ -424,12 +429,14 @@ function teamEff(team, map, comp) {
   var an = compAnalysis(team, comp);
   var base = sum(five.map(function (p) {
     var sa = p.saude == null ? 100 : p.saude;
-    return ovr(p) + p.form * 0.8 * (1.2 - (p.cons || 70) / 250) + (p.morale - 70) * 0.03 + an.perPlayer[p.id] - Math.max(0, 70 - sa) * 0.06;
+    return ovr(p) + p.form * 0.8 * (1.2 - (p.cons || 70) / 250) + (p.morale - 70) * 0.04 + an.perPlayer[p.id] - Math.max(0, 75 - sa) * 0.09 - (healthy(p) ? 0 : 6);
   })) / 5;
   var lead = Math.max.apply(null, five.map(function (p) { return p.lead || 60; }));
   var tw = sum(five.map(function (p) { return p.team || 65; })) / 5;
   var staffB = (staffLvl(team, "tecnico") - 3) * 0.35 + (staffLvl(team, "analista") - 2.5) * 0.2;
-  return base + an.cov + qgEff(team) + ((team.mapProf[map] || 60) - 60) * 0.06 + (lead - 65) * 0.03 + (tw - 65) * 0.02 + staffB;
+  var quim = ((team.quimica == null ? 75 : team.quimica) - 75) * 0.05;
+  var aiB = S.userTeam && team.id !== S.userTeam ? dif().ai : 0;
+  return base + an.cov + qgEff(team) + quim + aiB + ((team.mapProf[map] || 60) - 60) * 0.06 + (lead - 65) * 0.03 + (tw - 65) * 0.02 + staffB;
 }
 
 /* ---------------------------------------------------------------------
@@ -451,6 +458,10 @@ function newMapSim(A, B, map, opts) {
   };
   s.effA = teamEff(A, map, s.compA);
   s.effB = teamEff(B, map, s.compB);
+  if (opts.pressao) {
+    var pr = function (t) { return sum(activeFive(t).map(function (p) { return ((p.comp || 70) - 70) * 0.05 + ((p.clutch || 70) - 70) * 0.02; })) / 5; };
+    s.effA += pr(A); s.effB += pr(B); s.pressao = true;
+  }
   activeFive(A).concat(activeFive(B)).forEach(function (p) { s.stats[p.id] = { k:0, d:0, a:0, fk:0, dmg:0 }; });
   return s;
 }
@@ -500,6 +511,16 @@ function resolveAtk(s, who, buy) {
     var hist = who === "A" ? s.histA : s.histB, last = hist[hist.length - 1];
     site = wpickObj(pf.sites, sites);
     if (last && last.stacked && last.site === site && R() < .7) site = pick(sites.filter(function (x) { return x !== site; }));
+    var hd = ((who === "A" ? s.hdB : s.hdA) || []).slice(-4);
+    if (hd.length >= 3 && buy !== "eco") {
+      var dc = {}; hd.forEach(function (h) { dc[h.setup] = (dc[h.setup] || 0) + 1; });
+      var topD = Object.keys(dc).sort(function (a, b) { return dc[b] - dc[a]; })[0];
+      var rp = (0.25 + 0.06 * (staffLvl(team, "analista") - 2.5)) * dif().read;
+      if (dc[topD] >= 3 && R() < rp) {
+        if (topD === "stack") { var stS = hd[hd.length - 1].site; plano = "exec"; site = pick(sites.filter(function (x) { return x !== stS; })) || site; }
+        else plano = { agressivo:"exec", retake:"split", padrao:"split" }[topD] || plano;
+      }
+    }
   }
   if (sites.indexOf(site) < 0) site = sites[0];
   var fakeSite = plano === "fake" ? pick(sites.filter(function (x) { return x !== site; })) : null;
@@ -514,8 +535,15 @@ function resolveDef(s, who, atkWho) {
   var cnt = {}; hist.forEach(function (h) { cnt[h.site] = (cnt[h.site] || 0) + 1; });
   var top = Object.keys(cnt).sort(function (a, b) { return cnt[b] - cnt[a]; })[0];
   var sense = sum(activeFive(team).map(function (p) { return p.sense; })) / 5;
-  var readP = 0.22 + 0.08 * (staffLvl(team, "analista") - 2.5) + (sense - 72) * 0.01;
-  if (top && cnt[top] / Math.max(1, hist.length) >= 0.6 && R() < readP) return { setup:"stack", site:top, rotacao:"media" };
+  var readP = (0.22 + 0.08 * (staffLvl(team, "analista") - 2.5) + (sense - 72) * 0.01) * dif().read;
+  var pc = {}; hist.forEach(function (h) { pc[h.plano] = (pc[h.plano] || 0) + 1; });
+  var topP = Object.keys(pc).sort(function (a, b) { return pc[b] - pc[a]; })[0];
+  if (topP && pc[topP] >= 3 && R() < readP * 1.1) {
+    var COUNTER = { exec:"stack", padrao:"stack", rush:"agressivo", split:"retake", fake:"padrao", lurk:"retake" };
+    var cs = COUNTER[topP] || "padrao";
+    return { setup:cs, site:top || pick(sites), rotacao:topP === "fake" ? "lenta" : "media" };
+  }
+  if (top && cnt[top] / Math.max(1, hist.length) >= 0.5 && R() < readP) return { setup:"stack", site:top, rotacao:"media" };
   var setup = wpickObj(teamProfile(team).def);
   return { setup:setup, site:pick(sites), rotacao:pick(["rapida", "media", "media", "lenta"]) };
 }
@@ -523,13 +551,21 @@ function resolveDef(s, who, atkWho) {
 function styleOf(s, who, side) {
   var tac = who === "A" ? s.tacA : s.tacB;
   if (tac && s.userSide === who && tac.estilo && tac.estilo[side]) return tac.estilo[side];
-  return who === "A" ? s.styleA : s.styleB;
+  var st = who === "A" ? s.styleA : s.styleB;
+  if (st && st !== "padrao") return st;
+  var pf = teamProfile(T(who === "A" ? s.A : s.B));
+  return side === "atk" ? pf.estAtk : pf.estDef;
 }
 function styleTerm(style, side, buy) {
+  return style === "agressivo" && (buy === "eco" || buy === "force") ? 0.06 : style === "defensivo" && buy === "full" && side === "def" ? 0.02 : 0;
+}
+/* termo a favor do ATAQUE conforme o estilo de cada lado e o plano/setup escolhidos */
+function styleMatch(ea, ed, a, d) {
   var t = 0;
-  if (style === "agressivo") t += side === "atk" ? 0.10 : -0.06;
-  if (style === "defensivo") t += side === "def" ? 0.08 : -0.08;
-  if (style === "agressivo" && (buy === "eco" || buy === "force")) t += 0.12;
+  if (ea === "agressivo") t += (d.setup === "retake" || d.setup === "padrao") ? 0.10 : (d.setup === "agressivo" || (d.setup === "stack" && d.site === a.site)) ? -0.14 : 0;
+  if (ea === "defensivo") t += d.setup === "agressivo" ? 0.09 : d.setup === "retake" ? -0.10 : -0.02;
+  if (ed === "agressivo") t -= (a.plano === "lurk" || a.plano === "fake" || a.plano === "padrao") ? 0.11 : (a.plano === "exec" || a.plano === "rush") ? -0.13 : 0;
+  if (ed === "defensivo") t -= (a.plano === "rush" || a.plano === "exec") ? 0.10 : (a.plano === "fake" || a.plano === "lurk" || a.plano === "split") ? -0.11 : 0;
   return t;
 }
 
@@ -558,8 +594,9 @@ function stepRound(s) {
   var atkWho = sideA === "atk" ? "A" : "B", defWho = atkWho === "A" ? "B" : "A";
   var aTac = resolveAtk(s, atkWho, atkWho === "A" ? buyA : buyB);
   var dTac = resolveDef(s, defWho, atkWho);
-  var tt = tacticTerm(aTac, dTac);
+  var tt = tacticTerm(aTac, dTac) + styleMatch(styleOf(s, atkWho, "atk"), styleOf(s, defWho, "def"), aTac, dTac);
   x += atkWho === "A" ? tt : -tt;
+  (defWho === "A" ? (s.hdA = s.hdA || []) : (s.hdB = s.hdB || [])).push({ setup:dTac.setup, site:dTac.site });
   var pA = sigmoid(x);
   var aWins = R() < pA;
   (atkWho === "A" ? s.histA : s.histB).push({ site:aTac.site, plano:aTac.plano, stacked:dTac.setup === "stack" && dTac.site === aTac.site,
@@ -731,7 +768,7 @@ function simSeries(aId, bId, bo) {
   var need = Math.ceil(bo / 2), wa = 0, wb = 0, maps = [];
   for (var i = 0; i < veto.maps.length && wa < need && wb < need; i++) {
     var e = veto.maps[i];
-    var s = newMapSim(A, B, e.map, { atkFirst:atkFirstFrom(e) });
+    var s = newMapSim(A, B, e.map, { atkFirst:atkFirstFrom(e), pressao:bo >= 5 });
     finishMap(s);
     maps.push(mapSummary(s));
     if (s.winner === "A") wa++; else wb++;
@@ -753,7 +790,7 @@ function seriesResult(aId, bId, bo, maps, wa, wb, vetoLog) {
 
 function applySeriesEffects(res) {
   eloUpdate(res);
-  if (S.userTeam && (res.a === S.userTeam || res.b === S.userTeam)) boardDelta(res.winner === S.userTeam ? 1 : -1.5, (res.winner === S.userTeam ? "Vitória" : "Derrota") + " contra " + T(res.winner === S.userTeam ? res.loser : res.winner).tag);
+  if (S.userTeam && (res.a === S.userTeam || res.b === S.userTeam)) boardDelta(res.winner === S.userTeam ? 0.8 : -2 * dif().board, (res.winner === S.userTeam ? "Vitória" : "Derrota") + " contra " + T(res.winner === S.userTeam ? res.loser : res.winner).tag);
   [res.a, res.b].forEach(function (tid) {
     var won = res.winner === tid;
     var psi = staffLvl(T(tid), "psicologo");
@@ -761,7 +798,13 @@ function applySeriesEffects(res) {
       p.form = clamp(p.form + (won ? 0.6 : -0.6), -3, 3);
       var mo = tid === S.userTeam ? (mgr("motivacao") - 10) * 0.15 : 0;
       p.morale = clamp(p.morale + (won ? 3 + mo : -3 + psi * 0.4 + mo), 30 + psi * 3, 99);
-      p.saude = clamp((p.saude == null ? 100 : p.saude) - res.maps.length * ri(3, 6) * (1.25 - (p.stam || 70) / 250), 40, 100);
+      p.saude = clamp((p.saude == null ? 100 : p.saude) - res.maps.length * ri(3, 6) * (1.25 - (p.stam || 70) / 250) * (tid === S.userTeam ? dif().fad : 1), 35, 100);
+      var ich = 0.012 * (tid === S.userTeam ? dif().inj : 1) * (p.saude < 60 ? 3 : 1);
+      if (healthy(p) && R() < ich) {
+        var L = pick([["tendinite no punho", 4, 9], ["dor nas costas", 3, 6], ["burnout", 5, 10], ["gripe", 2, 4]]);
+        p.lesao = { tipo:L[0], dias:ri(L[1], L[2]) };
+        if (tid === S.userTeam) news(p.nick + " está fora por " + p.lesao.dias + " dias (" + L[0] + ").", "ruim");
+      }
     });
   });
   res.maps.forEach(function (m) {
@@ -1327,6 +1370,8 @@ function playDay(userResult) {
     }
   });
   S.eventos.forEach(function (ev) { evEndDay(ev); });
+  Object.keys(S.players).forEach(function (id) { var p = S.players[id]; if (p.lesao && p.lesao.dias > 0) { p.lesao.dias--; if (p.lesao.dias <= 0) { if (p.teamId === S.userTeam) news(p.nick + " voltou a treinar normalmente.", "bom"); p.lesao = null; } } });
+  Object.keys(S.teams).forEach(function (id) { var t = S.teams[id]; t.quimica = clamp((t.quimica == null ? 75 : t.quimica) + (id === S.userTeam ? 0.25 + ((S.qg && S.qg.bootcamp) || 1) * 0.06 : 0.3), 30, 95); });
   trainingTick();
   decayForm();
   recoverHealth();
@@ -1359,6 +1404,7 @@ function chargePayroll() {
     var t = S.teams[id];
     var pay = (sum(t.roster.map(function (pid) { return P(pid).salary; })) + staffPayroll(t)) / 7;
     var income = incomeFor(t);
+    if (id === S.userTeam) pay *= dif().salary;
     t.cash = Math.round(t.cash - pay + income);
     if (id === S.userTeam) {
       ledger(id, "Salários", -pay, "Folha de jogadores e staff — " + FASES[S.fase].nome);
@@ -1439,13 +1485,13 @@ function offseason() {
     }
   });
   S.qualMasters = {}; S.qualChampions = {}; S.stage2 = {}; S.chalRank = {};
-  retirements(); regens();
+  retirements(); regens(); raiseDemands();
   aiMarket(ri(10, 18));
   if (S.userTeam) genYouth(ri(2, 3));
   rotateMaps();
 }
 function newSeason() {
-  S.temporada++;
+  S.temporada++; S.sf = {};
   Object.keys(S.cp).forEach(function (id) { S.cp[id] = 0; });
   Object.keys(S.players).forEach(function (id) { S.players[id].stats = { mapas:0, k:0, d:0, a:0, acsSum:0 }; });
   buildPhase(0);
@@ -1489,11 +1535,12 @@ function buyPlayer(pid, offer) {
   var p = P(pid), buyer = T(S.userTeam), seller = T(p.teamId);
   if (!marketOpen()) return { ok:false, msg:"A janela está fechada. Ela abre no início de cada fase." };
   if (buyer.roster.length >= 7) return { ok:false, msg:"Elenco cheio (máximo de 7). Libere alguém antes." };
-  var price = Math.round(valueFor(p) * (1 - (mgr("negociacao") - 10) * 0.012) / 1000) * 1000;
+  var price = Math.round(valueFor(p) * dif().price * (1 - (mgr("negociacao") - 10) * 0.012) / 1000) * 1000;
   if (offer > buyer.cash) return { ok:false, msg:"Caixa insuficiente." };
   if (offer < price * 0.9) return { ok:false, msg:seller.nome + " recusou. Pedem pelo menos " + money(Math.round(price * 0.9 / 1000) * 1000) + "." };
   if (offer < price && R() < 0.5) return { ok:false, msg:seller.nome + " recusou essa oferta. Tente chegar mais perto de " + money(price) + "." };
   buyer.cash -= offer; seller.cash += offer;
+  buyer.quimica = clamp((buyer.quimica == null ? 72 : buyer.quimica) - 10, 30, 95);
   ledger(buyer.id, "Transferência", -offer, "Compra de " + p.nick + " (" + seller.tag + ")"); tlog(p, seller.id, buyer.id, offer, "Transferência");
   seller.roster = seller.roster.filter(function (id) { return id !== pid; });
   if (seller.lineup) seller.lineup = seller.lineup.filter(function (id) { return id !== pid; });
@@ -1509,6 +1556,7 @@ function signFree(pid) {
   if (buyer.roster.length >= 7) return { ok:false, msg:"Elenco cheio (máximo de 7)." };
   var luvas = Math.round(p.salary * 0.25 / 1000) * 1000;
   if (luvas > buyer.cash) return { ok:false, msg:"Caixa insuficiente para as luvas (" + money(luvas) + ")." };
+  buyer.quimica = clamp((buyer.quimica == null ? 72 : buyer.quimica) - 8, 30, 95);
   buyer.cash -= luvas; ledger(buyer.id, "Luvas", -luvas, "Contratação de " + p.nick); tlog(p, null, buyer.id, 0, "Agente livre");
   S.freeAgents = S.freeAgents.filter(function (id) { return id !== pid; });
   p.teamId = buyer.id; p.contract = 2; p.salary = salaryFor(ovr(p));
@@ -1619,10 +1667,12 @@ function migrate() {
   S.academia = S.academia || []; if (!S.academiaNivel) S.academiaNivel = 1;
   S.hof = S.hof || { temporadas:[], lendas:[] };
   S.mapas.forEach(function (m) { ensureMap(m); });
-  S.versao = 5;
+  if (!S.dif) S.dif = "normal";
+  S.versao = 6;
 }
+function setLineupChem() { var t = userTeam(); if (t) t.quimica = clamp((t.quimica == null ? 72 : t.quimica) - 3, 30, 95); }
 function initQG() { var l = qgLevels(T(S.userTeam)); S.qg = {}; Object.keys(QG_ITEMS).forEach(function (k) { S.qg[k] = l[k]; }); }
-function setUserTeam(id) { S.userTeam = id; S.qg = null; initQG(); autoSponsors(T(id)); if (!S.board) boardInit(); if (!S.academia || !S.academia.length) { S.academiaNivel = S.academiaNivel || 1; genYouth(3); } }
+function setUserTeam(id) { S.userTeam = id; T(id).quimica = 66; S.qg = null; initQG(); autoSponsors(T(id)); if (!S.board) boardInit(); if (!S.academia || !S.academia.length) { S.academiaNivel = S.academiaNivel || 1; genYouth(3); } }
 
 /* ---------------------------------------------------------------------
    Clube: livro-caixa, transferências, QG, patrocínio, ranking
@@ -1668,7 +1718,7 @@ function qgBonus(t) {
   return b;
 }
 function qgEff(t) { var b = qgBonus(t); return sum(Object.keys(b).map(function (k) { return b[k]; })) * 0.25; }
-function qgCost(k, lvl) { return QG_ITEMS[k].base * lvl * lvl; }
+function qgCost(k, lvl) { return Math.round(QG_ITEMS[k].base * lvl * lvl * dif().price / 1000) * 1000; }
 function qgUpgrade(k) {
   var me = T(S.userTeam), lv = S.qg[k];
   if (lv >= 5) return { ok:false, msg:QG_ITEMS[k].nome + " já está no nível máximo." };
@@ -1739,6 +1789,7 @@ function aiMarket(n) {
     if (seller.lineup) seller.lineup = null;
     cand.teamId = buyer.id; cand.contract = ri(1, 3); cand.salary = salaryFor(ovr(cand));
     buyer.roster.push(cand.id); if (buyer.lineup) buyer.lineup = null;
+    buyer.quimica = clamp((buyer.quimica == null ? 75 : buyer.quimica) - 8, 30, 95);
     tlog(cand, seller.id, buyer.id, price, "Transferência");
     if (buyer.roster.length > 6) releasePlayer(buyer.roster.map(P).sort(function (a, b) { return ovr(a) - ovr(b); })[0]);
     while (seller.roster.length < 5) aiSignFreeAgent(seller);
@@ -1761,8 +1812,16 @@ function eloUpdate(res) {
    Diretoria, conversas, negociação, academia, perfis da IA, meta,
    rotação de mapas, aposentadoria, novos talentos e hall da fama
    --------------------------------------------------------------------- */
+var DIF = {
+  facil:    { nome:"Fácil",    ai:-1.5, read:0.6, inj:0.5, fad:0.8, money:1.15, price:0.9,  fire:10, board:0.7, salary:0.9 },
+  normal:   { nome:"Normal",   ai:0,    read:1.0, inj:1.0, fad:1.0, money:1.0,  price:1.0,  fire:15, board:1.0, salary:1.0 },
+  dificil:  { nome:"Difícil",  ai:2.5,  read:1.5, inj:1.3, fad:1.25, money:0.85, price:1.15, fire:22, board:1.3, salary:1.12 },
+  pesadelo: { nome:"Pesadelo", ai:4.0,  read:1.9, inj:1.6, fad:1.45, money:0.72, price:1.3,  fire:30, board:1.6, salary:1.25 }
+};
+function dif() { return DIF[(S && S.dif) || "normal"] || DIF.normal; }
+function setDif(k) { if (DIF[k]) S.dif = k; }
 function userTeam() { return S && S.userTeam ? T(S.userTeam) : null; }
-function boardInit() { S.board = { conf:62, hist:[], avisado:false }; S.propostas = []; S.demitido = false; }
+function boardInit() { S.board = { conf:55, hist:[], avisado:false }; S.propostas = []; S.demitido = false; }
 function expectedPos(t, ev) {
   var n = Object.keys(ev.colocacao).length || 12, lv = t.nivel || 2;
   var frac = { 5:.17, 4:.34, 3:.5, 2:.67, 1:.8 }[lv] || .5;
@@ -1778,18 +1837,44 @@ function boardDelta(d, motivo) {
   if (b.conf < 35 && antes >= 35) news("O Conselho está preocupado com os resultados. Sua posição começa a ficar em risco (confiança " + b.conf + "%).", "ruim");
   if (b.conf >= 80 && antes < 80) news("O Conselho está muito satisfeito com o seu trabalho (confiança " + b.conf + "%).", "bom");
 }
+function n0(ev) { return Object.keys(ev.colocacao).length || 10; }
+function objetivoCheck(t) {
+  var f = S.sf || {}, lv = t.nivel || 2;
+  if (isChal(t.liga)) return lv >= 4 ? !!(f.chalTitulo || f.playins) : lv >= 3 ? !!f.chalPlayoffs : !!f.chalDigno;
+  return lv >= 5 ? !!f.champions : lv >= 4 ? !!(f.masters || f.champions) : lv >= 3 ? !!f.playoffs : !!f.naoLanterna;
+}
 function boardEvent(ev) {
   var u = S.userTeam; if (!u || !ev.colocacao[u]) return;
   var pos = ev.colocacao[u], exp = expectedPos(T(u), ev);
-  var d = clamp((exp - pos) * 3, -14, 14);
+  var d = clamp((exp - pos) * 4, -18, 16); if (d < 0) d *= dif().board;
+  S.sf = S.sf || {};
+  if (ev.tipo === "MASTERS") S.sf.masters = true;
+  if (ev.tipo === "CHAMPIONS") S.sf.champions = true;
+  if (ev.tipo === "PLAYINS") S.sf.playins = true;
+  if ((ev.tipo === "STAGE" || ev.tipo === "KICKOFF") && pos <= 8) S.sf.playoffs = true;
+  if (ev.tipo === "STAGE" && pos <= 10) S.sf.naoLanterna = true;
+  if (ev.tipo === "CHAL" && pos === 1) S.sf.chalTitulo = true;
+  if (ev.tipo === "CHAL" && pos <= 8) S.sf.chalPlayoffs = true;
+  if (ev.tipo === "CHAL" && pos <= Math.max(2, n0(ev) - 2)) S.sf.chalDigno = true;
   if (pos === 1) d += 12;
   boardDelta(d, ev.nome + ": " + posLabel(pos) + " (esperado: até " + exp + "º)");
 }
 function boardPhaseEnd() {
   var t = userTeam(); if (!t) return;
+  var js = (S.meusJogos || []).filter(function (j) { return j.temp === S.temporada && j.fase === S.fase; });
+  if (js.length) { var wr = js.filter(function (j) { return j.won; }).length / js.length; S.spPerf = 0.85 + wr * 0.3; } else S.spPerf = 1;
+  t.roster.map(P).forEach(function (p) { if (p.querAumento) { if (salaryFor(ovr(p)) * dif().salary <= p.salary * 1.2) p.querAumento = false; else p.morale = clamp(p.morale - 4, 20, 99); } });
   if (!S.board) boardInit();
-  if (t.cash < 0) boardDelta(-6, "Caixa negativo");
-  if (S.board.conf < 15) {
+  if (t.cash < 0) boardDelta(-6 * dif().board, "Caixa negativo");
+  if (payroll(t) > salaryCap(t)) boardDelta(-4 * dif().board, "Folha acima do teto salarial");
+  if (FASES[S.fase].id === "CHAMPIONS" || FASES[S.fase].id === "OFF") {
+    if (!S.sf || !S.sf.avaliado) {
+      var ok = objetivoCheck(t);
+      boardDelta(ok ? 20 : -28 * dif().board, (ok ? "Objetivo da temporada cumprido: " : "Objetivo da temporada NÃO cumprido: ") + objetivoPara(t).toLowerCase());
+      S.sf = S.sf || {}; S.sf.avaliado = true;
+    }
+  }
+  if (S.board.conf < dif().fire) {
     S.demitido = true;
     news("Você foi demitido da " + t.nome + ". O Conselho decidiu mudar o comando.", "ruim");
     S.propostas = genOffers(true);
@@ -1879,7 +1964,7 @@ function squadMood() {
 /* negociação de contrato */
 function contractAsk(p) {
   var base = salaryFor(ovr(p));
-  var f = 1.08 + (70 - p.morale) / 220 + (p.pedidoSaida ? 0.15 : 0);
+  var f = (1.08 + (70 - p.morale) / 220 + (p.pedidoSaida ? 0.15 : 0)) * dif().salary;
   return Math.round(base * f / 1000) * 1000;
 }
 function negotiate(pid, sal, anos, multa) {
@@ -1956,6 +2041,7 @@ function promoteYouth(pid) {
   S.academia = S.academia.filter(function (x) { return x !== pid; });
   p.academia = null; p.teamId = me.id; p.contract = 3; p.salary = Math.max(8000, Math.round(salaryFor(ovr(p)) * 0.6 / 1000) * 1000);
   me.roster.push(pid); tlog(p, null, me.id, 0, "Academia");
+  me.quimica = clamp((me.quimica == null ? 72 : me.quimica) - 5, 30, 95);
   news(p.nick + " subiu da academia pro elenco principal.", "bom");
   return { ok:true, msg:p.nick + " agora faz parte do elenco." };
 }
@@ -1963,13 +2049,14 @@ function releaseYouth(pid) { S.academia = (S.academia || []).filter(function (x)
 
 /* perfis táticos da IA e scrims */
 function teamProfile(t) {
-  if (t.perfil) return t.perfil;
+  if (t.perfil && t.perfil.estAtk) return t.perfil;
   var r = mulberry(hashStr("perfil:" + t.id));
   var pl = {}; ["padrao", "exec", "split", "rush", "fake", "lurk"].forEach(function (k) { pl[k] = 5 + Math.floor(r() * 30); });
   var fav = ["padrao", "exec", "split", "rush", "fake", "lurk"][Math.floor(r() * 6)]; pl[fav] += 35;
   var siteW = { A:0.5 + r() * 1.5, B:0.5 + r() * 1.5, C:0.5 + r() * 1.5 };
   var df = { padrao:40 + r() * 20, stack:5 + r() * 25, agressivo:5 + r() * 25, retake:5 + r() * 20 };
-  t.perfil = { planos:pl, sites:siteW, def:df, fav:fav };
+  var ests = ["padrao", "padrao", "agressivo", "defensivo"];
+  t.perfil = { planos:pl, sites:siteW, def:df, fav:fav, estAtk:ests[Math.floor(r() * 4)], estDef:ests[Math.floor(r() * 4)] };
   return t.perfil;
 }
 function wpickObj(o, keys) { var ks = keys || Object.keys(o), tot = sum(ks.map(function (k) { return o[k]; })), x = R() * tot; for (var i = 0; i < ks.length; i++) { x -= o[ks[i]]; if (x <= 0) return ks[i]; } return ks[0]; }
@@ -2039,6 +2126,13 @@ function hofSeason() {
   var u = userTeam();
   S.hof.temporadas.unshift({ temp:S.temporada, champ:champ ? champ.campeao : null, mvp:mvp ? { pid:mvp.id, nick:mvp.nick, team:mvp.teamId, acs:Math.round(mvp.stats.acsSum / mvp.stats.mapas) } : null,
     titulos:camp.map(function (h) { return { ev:h.evento, t:h.campeao }; }), user:u ? { team:u.id, conquistas:(S.conquistas || []).filter(function (c) { return c.indexOf(String(S.temporada)) === 0; }), elo:(S.elo || {})[u.id] || 0 } : null });
+}
+function raiseDemands() {
+  var t = userTeam(); if (!t) return;
+  t.roster.map(P).forEach(function (p) {
+    var fair = salaryFor(ovr(p)) * dif().salary;
+    if (fair > p.salary * 1.2) { p.morale = clamp(p.morale - 12, 20, 99); p.querAumento = true; news(p.nick + " evoluiu e quer aumento: pede cerca de " + money(Math.round(fair / 1000) * 1000) + "/ano. Renegocie ou a moral cai.", "ruim"); }
+  });
 }
 function retirements() {
   var feitos = [];
@@ -2121,7 +2215,7 @@ function importSave(txt) { S = JSON.parse(txt); rng = mulberry((S.seed + S.nextI
 window.VM = {
   get S() { return S; },
   CHAL:CHAL, isChal:isChal, EXTRA:EXTRA, SITES:SITES, ATK_PLANOS:ATK_PLANOS, DEF_SETUPS:DEF_SETUPS,
-  STAFF_ROLES:STAFF_ROLES, STAFF_NOME:STAFF_NOME, STAFF_EFEITO:STAFF_EFEITO, staffOf:staffOf, staffLvl:staffLvl, staffPayroll:staffPayroll, incomeFor:incomeFor, createOrg:createOrg, boardDelta:boardDelta, expectedPos:expectedPos, acceptOffer:acceptOffer, rejectOffer:rejectOffer, talk:talk, contractAsk:contractAsk, negotiate:negotiate, genYouth:genYouth, academyCost:academyCost, upgradeAcademy:upgradeAcademy, promoteYouth:promoteYouth, releaseYouth:releaseYouth, doScrim:doScrim, scrimReport:scrimReport, metaBonus:metaBonus, teamProfile:teamProfile, MAP_BENCH:MAP_BENCH, objetivoPara:objetivoPara, talkKey:talkKey, baseIncome:baseIncome, sponsorIncome:sponsorIncome, SPONSORS:SPONSORS, sponsorById:sponsorById, sponsorReq:sponsorReq, setSponsor:setSponsor, QG_ITEMS:QG_ITEMS, qgBonus:qgBonus, qgCost:qgCost, qgUpgrade:qgUpgrade, qgEff:qgEff, setUserTeam:setUserTeam, eloInit:eloInit, MGR_ATTRS:MGR_ATTRS, mgr:mgr,
+  STAFF_ROLES:STAFF_ROLES, STAFF_NOME:STAFF_NOME, STAFF_EFEITO:STAFF_EFEITO, staffOf:staffOf, staffLvl:staffLvl, staffPayroll:staffPayroll, incomeFor:incomeFor, DIF:DIF, dif:dif, setDif:setDif, healthy:healthy, salaryCap:salaryCap, payroll:payroll, objetivoCheck:objetivoCheck, setLineupChem:setLineupChem, createOrg:createOrg, boardDelta:boardDelta, expectedPos:expectedPos, acceptOffer:acceptOffer, rejectOffer:rejectOffer, talk:talk, contractAsk:contractAsk, negotiate:negotiate, genYouth:genYouth, academyCost:academyCost, upgradeAcademy:upgradeAcademy, promoteYouth:promoteYouth, releaseYouth:releaseYouth, doScrim:doScrim, scrimReport:scrimReport, metaBonus:metaBonus, teamProfile:teamProfile, MAP_BENCH:MAP_BENCH, objetivoPara:objetivoPara, talkKey:talkKey, baseIncome:baseIncome, sponsorIncome:sponsorIncome, SPONSORS:SPONSORS, sponsorById:sponsorById, sponsorReq:sponsorReq, setSponsor:setSponsor, QG_ITEMS:QG_ITEMS, qgBonus:qgBonus, qgCost:qgCost, qgUpgrade:qgUpgrade, qgEff:qgEff, setUserTeam:setUserTeam, eloInit:eloInit, MGR_ATTRS:MGR_ATTRS, mgr:mgr,
   hireStaff:hireStaff, fireStaff:fireStaff, observe:observe, isScouted:isScouted, scoutLimit:scoutLimit, mapGain:mapGain,
   playerStars:playerStars, potStars:potStars, ensureTactics:ensureTactics, defaultTactic:defaultTactic, tacticTerm:tacticTerm, AGENTS:AGENTS, AGENT_ROLE:AGENT_ROLE, ROLE_NAME:ROLE_NAME, MAP_ATK:MAP_ATK, BUY_NAME:BUY_NAME, FASES:FASES, TREINOS:TREINOS,
   P:P, T:T, ovr:ovr, valueFor:valueFor, salaryFor:salaryFor, money:money, posLabel:posLabel,

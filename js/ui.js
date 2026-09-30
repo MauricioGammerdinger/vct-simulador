@@ -316,7 +316,7 @@ VIEWS.elenco = function () {
     body = '<div class="pcards">' + list.map(function (p) {
       var tit = five.indexOf(p.id) >= 0, sa = p.saude == null ? 100 : p.saude;
       return '<div class="pcard ' + (tit ? "tit" : "res") + (UI.swapOut === p.id ? " swap" : "") + '"><button class="pc-main" data-a="perfil" data-v="' + p.id + '">' + face(p, "xl") +
-        '<span class="pc-ovr">' + VM.ovr(p) + "</span><strong>" + esc(p.nick) + "</strong><small>" + esc(p.nat) + " · " + p.age + " anos</small>" + roleTag(p.role) +
+        '<span class="pc-ovr">' + VM.ovr(p) + "</span>" + (p.lesao && p.lesao.dias > 0 ? '<span class="pc-inj" title="' + esc(p.lesao.tipo) + '">✚ ' + p.lesao.dias + "d</span>" : "") + (p.querAumento ? '<span class="pc-raise">quer aumento</span>' : "") + "<strong>" + esc(p.nick) + "</strong><small>" + esc(p.nat) + " · " + p.age + " anos</small>" + roleTag(p.role) +
         '<span class="pc-stars">' + ART.stars(VM.playerStars(p)) + '<em>pot</em>' + ART.stars(VM.potStars(p)) + "</span>" +
         '<span class="pc-ag">' + esc(p.agents.slice(0, 3).join(" · ") || "pool livre") + "</span>" +
         '<span class="bars"><label>Saúde</label>' + bar(sa, "hp") + '<label>Moral</label>' + bar(p.morale, "mo") + '<label>Forma</label>' + bar(formLevel(p.form), "fo") + "</span></button>" +
@@ -334,7 +334,7 @@ VIEWS.elenco = function () {
       }).join("") + "</tbody></table></div>";
   }
   var payroll = t.roster.reduce(function (a, id) { return a + VM.P(id).salary; }, 0);
-  return '<div class="card"><div class="head"><div><h2>' + esc(t.nome) + '</h2><p class="muted">' + t.roster.length + "/7 jogadores · folha " + money(payroll) + '/ano · clique num titular e depois num reserva pra trocar</p></div>' +
+  return '<div class="card"><div class="head"><div><h2>' + esc(t.nome) + '</h2><p class="muted">' + t.roster.length + "/7 jogadores · folha " + money(payroll) + '/ano · <b class="chem">Química ' + Math.round(t.quimica == null ? 75 : t.quimica) + "%</b> · clique num titular e depois num reserva pra trocar (trocar derruba um pouco a química)</p></div>" +
     seg("elencoModo", UI.elencoModo, [["cards", "Cartas"], ["tabela", "Tabela"]]) + "</div>" + body + "</div>";
 };
 
@@ -648,7 +648,9 @@ VIEWS.financas = function () {
 VIEWS.config = function () {
   var A = window.SFX ? window.SFX.cfg : { sfx:false, music:false, vol:.6 };
   var som = '<div class="card"><h3>Som</h3><div class="row"><button class="btn ' + (A.sfx ? "primary" : "ghost") + '" data-a="audioSfx">Efeitos: ' + (A.sfx ? "ligados" : "desligados") + '</button><button class="btn ' + (A.music ? "primary" : "ghost") + '" data-a="audioMusic">Música do menu: ' + (A.music ? "ligada" : "desligada") + '</button></div><label class="nf"><span>Volume <b>' + Math.round(A.vol * 100) + '%</b></span><input type="range" min="0" max="1" step="0.05" value="' + A.vol + '" data-c="audioVol"></label><p class="muted">Tiros, spike, explosão e cliques são gerados pelo navegador. Na velocidade Turbo os efeitos da partida ficam mudos.</p></div>';
-  return som + '<div class="grid2"><div class="card"><h3>Save</h3><p class="muted">O jogo salva sozinho neste navegador depois de cada dia. Pra backup ou levar pra outro PC, exporte o texto e guarde num arquivo.</p>' +
+  var dk = S().dif || "normal";
+  var difc = '<div class="card"><h3>Dificuldade</h3><div class="cchips">' + Object.keys(VM.DIF).map(function (k) { return '<button class="cchip ' + (dk === k ? "on" : "") + '" data-a="setDif" data-v="' + k + '">' + VM.DIF[k].nome + "</button>"; }).join("") + '</div><p class="muted">Muda a força da IA, quanto ela lê suas táticas, dinheiro, lesões, preço do mercado e a paciência da diretoria. Vale a partir de agora.</p></div>';
+  return som + difc + '<div class="grid2"><div class="card"><h3>Save</h3><p class="muted">O jogo salva sozinho neste navegador depois de cada dia. Pra backup ou levar pra outro PC, exporte o texto e guarde num arquivo.</p>' +
     '<div class="row"><button class="btn" data-a="exportar">Exportar save</button><button class="btn ghost" data-a="importar">Importar save</button></div>' +
     '<textarea id="saveBox" rows="4" placeholder="O save aparece aqui ao exportar. Pra importar, cole aqui e clique em Importar."></textarea></div>' +
     '<div class="card"><h3>Trocar de time / recomeçar</h3><p class="muted">Apaga a carreira atual e volta pra escolha de time.</p>' +
@@ -708,7 +710,7 @@ ACT.titular = function (pid) {
     UI.swapOut = pid; toast("Agora clique em um reserva pra entrar no lugar de " + VM.P(pid).nick + "."); return;
   }
   var out = UI.swapOut && five.indexOf(UI.swapOut) >= 0 ? UI.swapOut : five[five.length - 1];
-  five[five.indexOf(out)] = pid; t.lineup = five; UI.swapOut = null;
+  five[five.indexOf(out)] = pid; t.lineup = five; UI.swapOut = null; VM.setLineupChem();
   persist(); toast(VM.P(pid).nick + " entra no lugar de " + VM.P(out).nick + ".");
 };
 ACT.renovar = function (v) { UI.backTo = UI.view; UI.perfilAba = "contrato"; go("perfil", { perfil:v }); };
@@ -755,6 +757,7 @@ ACT.novoJogo = function () {
   });
 };
 /* change / input */
+ACT.setDif = function (v) { VM.setDif(v); persist(); toast("Dificuldade: " + VM.DIF[v].nome + "."); };
 ACT.audioSfx = function () { if (window.SFX) window.SFX.set("sfx", !window.SFX.cfg.sfx); render(); };
 ACT.audioMusic = function () { if (window.SFX) window.SFX.set("music", !window.SFX.cfg.music); render(); };
 ACT.audioVol = function (v) { if (window.SFX) { window.SFX.set("vol", +v); window.SFX.play("cash"); } render(); };

@@ -91,9 +91,12 @@ VIEWS.inicio = function () {
 
   /* coluna 1 */
   var five = VM.activeFive(t);
-  var tired = five.filter(function (p) { return (p.saude == null ? 100 : p.saude) < 70; });
+  var inj = t.roster.map(VM.P).filter(function (p) { return p.lesao && p.lesao.dias > 0; });
+  var tired = five.filter(function (p) { return (p.saude == null ? 100 : p.saude) < 70 && inj.indexOf(p) < 0; });
   var low = five.filter(function (p) { return p.morale < 50; });
-  var cond = tired.length ? '<p class="cond warn">! ' + tired.map(function (p) { return esc(p.nick); }).join(", ") + (tired.length > 1 ? " estão cansados." : " está cansado.") + "</p>"
+  var cond = inj.length ? '<p class="cond bad">✚ Lesionados: ' + inj.map(function (p) { return esc(p.nick) + " (" + p.lesao.dias + " dias)"; }).join(", ") + "</p>" : "";
+  cond += '<p class="cond ' + ((t.quimica == null ? 75 : t.quimica) < 60 ? "warn" : "ok") + '">Química do time: <b>' + Math.round(t.quimica == null ? 75 : t.quimica) + "%</b>" + ((t.quimica || 75) < 60 ? " — elenco ainda se entrosando" : "") + "</p>";
+  cond += tired.length ? '<p class="cond warn">! ' + tired.map(function (p) { return esc(p.nick); }).join(", ") + (tired.length > 1 ? " estão cansados." : " está cansado.") + "</p>"
     : low.length ? '<p class="cond warn">! Moral baixa: ' + low.map(function (p) { return esc(p.nick); }).join(", ") + ".</p>" : '<p class="cond ok">! Todos os jogadores estão em <b>boa condição</b>!</p>';
   var elenco = '<div class="hsec"><div class="k">Elenco</div><div class="circles">' + five.map(function (p) {
     return '<button class="circ" data-a="perfil" data-v="' + p.id + '" title="' + esc(p.nick) + '">' + G.face(p, "md round") + "<small>" + esc(p.nick) + "</small></button>";
@@ -358,7 +361,8 @@ VIEWS.financas = function () {
   var rec = hist.reduce(function (a, h) { return a + h.receita; }, 0) + acc.receita, des = hist.reduce(function (a, h) { return a + h.despesa; }, 0) + acc.despesa;
   var jog = t.roster.reduce(function (a, id) { return a + VM.P(id).salary; }, 0), stf = VM.staffPayroll(t);
   var base = VM.baseIncome(t), spn = VM.sponsorIncome(t), inc = VM.incomeFor(t), gasto = Math.round((jog + stf) / 7);
-  var rows = [["Repasse da liga", base, C_REC], ["Patrocínios", spn, C_REC], ["Ajuste por educação financeira", inc - base - spn, inc - base - spn < 0 ? C_DES : C_REC], ["Salários de jogadores", -Math.round(jog / 7), C_DES], ["Salários do staff", -Math.round(stf / 7), C_DES]];
+  var rows = [["Repasse da liga", base, C_REC], ["Patrocínios", spn, C_REC], ["Ajustes (dificuldade, desempenho, educação financeira)", inc - base - spn, inc - base - spn < 0 ? C_DES : C_REC], ["Salários de jogadores", -Math.round(jog / 7), C_DES], ["Salários do staff", -Math.round(stf / 7), C_DES]];
+  var cap = VM.salaryCap(t), pr = VM.payroll(t);
   var mx = Math.max.apply(null, rows.map(function (r) { return Math.abs(r[1]); })) || 1;
   var split = rows.filter(function (r) { return r[1]; }).map(function (r) {
     return '<div class="frow"><span>' + r[0] + '</span><i style="width:' + Math.round(Math.abs(r[1]) / mx * 100) + "%;background:" + r[2] + '"></i><b class="' + (r[1] < 0 ? "neg" : "pos") + '">' + (r[1] > 0 ? "+" : "") + money(r[1]) + "</b></div>";
@@ -370,7 +374,7 @@ VIEWS.financas = function () {
   var dir = '<div class="fdir">' + ART.face(dirName, t.tag, "md", { staff:true, suit:true }) + "<div><small>Diretor financeiro</small><strong>" + esc(dirName) + "</strong></div><p>" +
     (inc - gasto >= 0 ? "As contas fecham no azul: sobram " + money(inc - gasto) + " por fase antes das premiações." : "Atenção: gastamos " + money(gasto - inc) + " a mais do que entra por fase. Premiações ou vendas precisam cobrir.") + "</p></div>";
   return '<div class="fgrid"><div><div class="kpis"><div><small>Receita total</small><b>' + money(rec) + "</b></div><div><small>Despesa total</small><b>" + money(des) + "</b></div><div><small>Caixa</small><b class=\"" + (t.cash < 0 ? "neg" : "") + '">' + money(t.cash) + "</b></div><div><small>Fluxo por fase</small><b class=\"" + (inc - gasto < 0 ? "neg" : "pos") + '">' + (inc - gasto >= 0 ? "+" : "") + money(inc - gasto) + "</b></div></div>" +
-    sec("Receita e despesa por fase") + barChart(hist) + sec("Orçamento por fase") + split + dir + "</div>" +
+    sec("Receita e despesa por fase") + barChart(hist) + sec("Orçamento por fase") + split + '<div class="caprow ' + (pr > cap ? "over" : "") + '"><span>Teto salarial da liga</span><i><b style="width:' + Math.min(100, Math.round(pr / cap * 100)) + '%"></b></i><em>' + money(pr) + " / " + money(cap) + "</em></div>" + (pr > cap ? '<p class="neg small">Folha acima do teto: a diretoria perde confiança a cada fase.</p>' : "") + dir + "</div>" +
     "<div>" + sec("Transações") + '<div class="tblwrap ftx"><table class="lb"><thead><tr><th class="num">Data</th><th>Tipo</th><th class="num">Quantia</th><th>Descrição</th></tr></thead><tbody>' + (tx || '<tr><td colspan="4"><p class="empty">AINDA NÃO HÁ DADOS DE TRANSAÇÕES</p></td></tr>') + "</tbody></table></div></div></div>";
 };
 

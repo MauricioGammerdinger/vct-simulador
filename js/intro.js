@@ -26,7 +26,7 @@ function rint(a, b) { return a + Math.floor(Math.random() * (b - a + 1)); }
 function rpick(a) { return a[Math.floor(Math.random() * a.length)]; }
 
 function newMgr() {
-  var m = { nick:"", nome:"", sobrenome:"", genero:"M", nacao:"Brasil", dia:rint(1, 28), mes:rint(1, 12), ano:rint(1980, 2000), seed:rint(1, 1e6), attrs:{} };
+  var m = { nick:"", nome:"", sobrenome:"", genero:"M", nacao:"Brasil", dia:rint(1, 28), mes:rint(1, 12), ano:rint(1980, 2000), seed:rint(1, 1e6), attrs:{}, dif:"dificil" };
   KEYS.forEach(function (k) { m.attrs[k] = 8; });
   return m;
 }
@@ -110,6 +110,8 @@ function viewManager() {
     '<label class="mf"><span>Nação</span><select data-mgrsel="nacao">' + NACOES.map(function (n) { return "<option " + (n === m.nacao ? "selected" : "") + ">" + n + "</option>"; }).join("") + "</select></label>" +
     '<div class="mf"><span>Data de nascimento</span><div class="dnasc"><select data-mgrsel="dia">' + dias + '</select><select data-mgrsel="mes">' + MESES.map(function (n, i) { return '<option value="' + (i + 1) + '" ' + (i + 1 === m.mes ? "selected" : "") + ">" + n + "</option>"; }).join("") + '</select><select data-mgrsel="ano">' + anos + "</select></div></div></div>" +
     '<div class="mgrav">' + mgrFace(m, "xxxl") + '<button class="btn sm" data-a="iRandAv">Aleatório</button></div></div></div>' +
+    '<div class="difpick"><h3>Dificuldade</h3><div class="difs">' + [["facil", "Fácil", "Pra conhecer o jogo. IA mais fraca, dinheiro sobrando e diretoria paciente."], ["normal", "Normal", "Equilibrado. A IA lê suas táticas de vez em quando."], ["dificil", "Difícil", "IA mais forte e esperta, dinheiro curto, lesões e diretoria exigente."], ["pesadelo", "Pesadelo", "IA bem mais forte, lê tudo que você repete, orçamento apertado e demissão rápida."]].map(function (d) {
+      return '<button class="difc ' + (m.dif === d[0] ? "on" : "") + " d-" + d[0] + '" data-a="iDif" data-v="' + d[0] + '"><strong>' + d[1] + "</strong><small>" + d[2] + "</small></button>"; }).join("") + "</div></div>" +
     '<div class="row center ibtns"><button class="btn big" data-a="iRandAll">Aleatorizar tudo</button><button class="btn primary big" data-a="iMgrOk">Selecionar manager →</button></div></div>';
 }
 
@@ -263,6 +265,7 @@ ACT.iImportar = function () {
   try { VM.importSave(txt.trim()); G.persist(); I.modal = null; startLoading(VM.T(VM.S.userTeam).tag, function () { G.go("inicio"); }); }
   catch (e) { G.toast("Esse texto não é um save válido.", false); }
 };
+ACT.iDif = function (v) { I.mgr.dif = v; G.render(); };
 ACT.iGenero = function (v) { I.mgr.genero = v; G.render(); };
 ACT.iRandAv = function () { I.mgr.seed = rint(1, 1e6); G.render(); };
 ACT.iRandAttr = function () { randomAttrs(); G.render(); };
@@ -270,6 +273,7 @@ ACT.iRandAll = function () { randomizeAll(); G.render(); };
 ACT.iMgrOk = function () {
   if (!I.mgr.nick.trim()) { G.toast("Escolha um nick pro seu manager.", false); var n = root.querySelector('[data-mgr="nick"]'); if (n) n.focus(); return; }
   if (!S() || S().userTeam) freshWorld();
+  VM.setDif(I.mgr.dif || "dificil");
   I.step = "orgtipo"; G.render();
 };
 ACT.iOrgC2 = function (v) { ORG.c2 = v; G.render(); };
