@@ -28,7 +28,26 @@
 .mhead{flex-wrap:wrap} .mt small{display:none}
 }
 @media (max-width:520px){
-.livegrid{grid-template-columns:minmax(0,1fr)}
+/* partida ao vivo no celular: mapa em cima, os dois times lado a lado em cartões compactos */
+.livegrid{grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:8px}
+.lmap{grid-column:1 / -1;grid-row:1;margin:0 -6px}
+.lteam{gap:4px}
+.lth{gap:6px} .lth strong{font-size:14px} .sidechip{font-size:9px;padding:1px 5px}
+.ltc{font-size:10px;gap:4px;flex-wrap:wrap}
+.lpc{padding:4px 6px;gap:6px}
+.lpc .av,.lpc .face,.lpc img{display:none}
+.lpn strong{font-size:12px} .lpn small{font-size:10px}
+.lpe{font-size:9.5px;gap:4px;flex-wrap:wrap}
+.ultp i{width:5px;height:5px}
+.lpk{font-size:10.5px}
+.killfeed{right:6px;top:6px;max-width:78%;gap:2px}
+.killfeed > *{font-size:10px;padding:2px 5px}
+.killfeed > *:nth-child(n+4){display:none}
+.camb{font-size:10px;padding:3px 6px}
+.rbanner b{font-size:13px} .rbanner small{font-size:10.5px}
+.controls .crow{flex-wrap:wrap;gap:6px}
+.controls .seg button,.cchip{padding:6px 8px;font-size:12px}
+.bc-t strong{font-size:18px} .bc-t b{font-size:28px}
 .pcards{grid-template-columns:repeat(2,minmax(0,1fr))}
 .vsbig{gap:10px} .topbar h1{font-size:22px} .pcard .st5 i{width:10px;height:10px}
 }

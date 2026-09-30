@@ -128,6 +128,31 @@ function continueBtn(locked) {
   return '<span class="contw"><button class="btn cont" data-a="avancar">CONTINUAR</button><button class="btn ff" data-a="ateMeuJogo" title="Avança até o seu próximo jogo (ou até o fim da fase)">»</button></span>';
 }
 
+var DICAS_VIEW = {
+  inicio:"Este é o seu painel. CONTINUAR avança um dia; » pula até o seu próximo jogo. Fique de olho na química, nas lesões e na confiança do Conselho.",
+  caixa:"Tudo que acontece chega aqui: resultados, lesões, propostas e relatórios do olheiro.",
+  elenco:"Clique num titular e depois num reserva pra trocar. Na aba Funções, escolha IGL, entry, lurker, âncora e suporte — função vazia tira força.",
+  academia:"Jovens evoluem a cada fase. Suba pro elenco quando o potencial começar a aparecer.",
+  treino:"Treine 3 mapas por vez e até 2 jogadores aprendendo agentes novos. Descanso recupera moral e forma.",
+  taticas:"Monte o plano por mapa, lado e tipo de round. A IA lê o que você repete — varie.",
+  staff:"Cada cargo tem efeito real: técnico acelera treino, analista lê o rival, fisio recupera saúde, olheiro observa mais.",
+  mercado:"Sem observar, você só vê as estrelas aproximadas. Use a Rede de olheiros pra descobrir joias.",
+  transferencias:"Propostas pelos seus jogadores aparecem aqui. Dá pra pedir mais uma vez antes de fechar.",
+  competicoes:"Chaves, grupos e pontos do campeonato (CP). As duas últimas vagas do Champions saem por CP.",
+  estatisticas:"Ordene por ADR, KAST, FK−FD ou clutches pra achar quem está decidindo.",
+  qg:"Cada melhoria é paga uma vez e soma força pro time em todas as partidas.",
+  patrocinadores:"Tiers melhores exigem time maior. A torcida aumenta quanto eles pagam.",
+  financas:"Cuidado com o teto salarial: acima dele, a diretoria perde confiança toda fase.",
+  diretoria:"Abaixo do limite de confiança no fim de uma fase, você é demitido. Cumpra o objetivo da temporada.",
+  hof:"Campeões, MVPs e lendas aposentadas de todas as temporadas da sua carreira."
+};
+function dicasCfg() { try { return JSON.parse(localStorage.getItem("vct_dicas") || "{}"); } catch (e) { return {}; } }
+function dicaBanner(view) {
+  var c = dicasCfg(); if (c.off || c[view] || !DICAS_VIEW[view]) return "";
+  return '<div class="dica"><b>Dica</b><span>' + esc(DICAS_VIEW[view]) + '</span><button class="btn sm" data-a="dicaOk" data-v="' + view + '">Entendi</button><button class="btn sm ghost" data-a="dicaOff">Desligar dicas</button></div>';
+}
+ACT.dicaOk = function (v) { var c = dicasCfg(); c[v] = 1; try { localStorage.setItem("vct_dicas", JSON.stringify(c)); } catch (e) {} render(); };
+ACT.dicaOff = function () { var c = dicasCfg(); c.off = !c.off; try { localStorage.setItem("vct_dicas", JSON.stringify(c)); } catch (e) {} render(); };
 function shell(content, locked) {
   var s = S(), t = me();
   var unread = (s.noticias || []).filter(function (n) { return !n.lida; }).length;
@@ -146,7 +171,7 @@ function shell(content, locked) {
     '<section class="mainc"><header class="topbar"><div class="tt"><button class="arrow" data-a="navBack" ' + (canBack && !locked ? "" : "disabled") + ' aria-label="Voltar">‹</button><button class="arrow" data-a="navFwd" ' + (canFwd && !locked ? "" : "disabled") + ' aria-label="Avançar">›</button><h1>' + esc(locked ? "Partida" : viewTitle()) + "</h1></div>" +
     '<div class="date"><small>' + esc(dp.wd) + ",</small><b>" + esc(dp.dm) + "</b></div>" + continueBtn(locked) + "</header>" +
     (UI.saveWarn ? '<div class="warn">O navegador não deixou salvar. Use Configurações → Exportar save pra não perder nada.</div>' : "") +
-    '<main class="stage">' + content +
+    '<main class="stage">' + (locked ? "" : dicaBanner(UI.view)) + content +
     '<footer class="foot">Projeto pessoal de fã. Criado sob a política "Legal Jibber Jabber" da Riot Games usando recursos de propriedade da Riot Games. A Riot Games não endossa nem patrocina este projeto. Avatares, escudos e patrocinadores são ilustrações e nomes inventados pelo jogo. Elencos: ' + esc(VALDB.fonte) + ".</footer></main></section></div>";
 }
 function viewTitle() {
@@ -335,8 +360,19 @@ VIEWS.elenco = function () {
   }
   var payroll = t.roster.reduce(function (a, id) { return a + VM.P(id).salary; }, 0);
   return '<div class="card"><div class="head"><div><h2>' + esc(t.nome) + '</h2><p class="muted">' + t.roster.length + "/7 jogadores · folha " + money(payroll) + '/ano · <b class="chem">Química ' + Math.round(t.quimica == null ? 75 : t.quimica) + "%</b> · clique num titular e depois num reserva pra trocar (trocar derruba um pouco a química)</p></div>" +
-    seg("elencoModo", UI.elencoModo, [["cards", "Cartas"], ["tabela", "Tabela"]]) + "</div>" + body + "</div>";
+    seg("elencoModo", UI.elencoModo, [["cards", "Cartas"], ["tabela", "Tabela"], ["funcoes", "Funções"]]) + "</div>" + (UI.elencoModo === "funcoes" ? funcoesView(t) : body) + "</div>";
 };
+
+function funcoesView(t) {
+  var f = VM.funcoes(t), five = VM.activeFive(t);
+  var info = { igl:"Faz as chamadas. A Liderança dele vira a liderança do time; sem IGL o time perde força. Pesa em Dividir e Fake.", entry:"Primeiro a entrar. Mira e Movimentação pesam em Execução e Rush.", lurker:"Joga sozinho pelos flancos. Leitura de jogo pesa no plano Lurk.", ancora:"Segura o site na defesa. Vale mais jogando de sentinela, em Padrão e Stack.", suporte:"Utilitária pro time. Pesa no Ceder e retomar." };
+  return '<div class="funcs">' + Object.keys(VM.FUNCOES).map(function (k) {
+    var cur = f[k] ? VM.P(f[k]) : null;
+    return '<div class="fn"><div class="fnh"><strong>' + VM.FUNCOES[k] + "</strong>" + (cur ? face(cur, "sm") + "<b>" + esc(cur.nick) + "</b>" : '<span class="chip warn">vazio</span>') + '</div><p class="muted small">' + info[k] + '</p><select data-c="setFuncao" data-k="' + k + '"><option value="">— ninguém —</option>' +
+      five.map(function (p) { return '<option value="' + p.id + '" ' + (cur && cur.id === p.id ? "selected" : "") + ">" + esc(p.nick) + " (" + VM.ROLE_NAME[p.role] + " · LID " + to20(p.lead || 60) + " · MIR " + to20(p.aim) + " · LEI " + to20(p.sense) + ")</option>"; }).join("") + "</select></div>";
+  }).join("") + '</div><p class="muted small">Cada jogador ocupa uma função só. Função vazia ou mal escolhida tira força nos rounds em que ela importa.</p>';
+}
+ACT.setFuncao = function (v, el) { var r = VM.setFuncao(el.getAttribute("data-k"), v || null); persist(); toast(r.msg); };
 
 /* ---------------------------------------------------------------------
    Perfil do jogador
@@ -368,7 +404,9 @@ VIEWS.perfil = function () {
   var body;
   if (UI.perfilAba === "stats") {
     body = '<div class="statgrid"><div><b>' + st.mapas + "</b><small>Mapas</small></div><div><b>" + st.k + "</b><small>Abates</small></div><div><b>" + st.d + "</b><small>Mortes</small></div><div><b>" + st.a + "</b><small>Assist.</small></div>" +
-      "<div><b>" + (st.d ? (st.k / st.d).toFixed(2) : "—") + "</b><small>K/D</small></div><div><b>" + (st.mapas ? Math.round(st.acsSum / st.mapas) : "—") + "</b><small>ACS médio</small></div></div>" +
+      "<div><b>" + (st.d ? (st.k / st.d).toFixed(2) : "—") + "</b><small>K/D</small></div><div><b>" + (st.mapas ? Math.round(st.acsSum / st.mapas) : "—") + "</b><small>ACS médio</small></div>" +
+      "<div><b>" + (st.rd ? Math.round(st.dmg / st.rd) : "—") + "</b><small>ADR</small></div><div><b>" + (st.rd ? Math.round(st.kast / st.rd * 100) + "%" : "—") + "</b><small>KAST</small></div><div><b>" + (st.fk || 0) + "/" + (st.fd || 0) + "</b><small>FK / FD</small></div>" +
+      "<div><b>" + (st.cl || 0) + "</b><small>Clutches</small></div><div><b>" + (st.mk || 0) + "</b><small>Rounds 3K+</small></div><div><b>" + (p.titulos || 0) + "</b><small>Títulos</small></div></div>" +
       '<p class="muted">Estatísticas desta temporada, somando todos os campeonatos.</p>';
   } else if (UI.perfilAba === "conversa" && window.CARREIRA) {
     body = window.CARREIRA.conversa(p);
@@ -376,6 +414,8 @@ VIEWS.perfil = function () {
     body = '<p class="muted">Jogador da sua academia. Suba ele pro elenco em Academia quando estiver pronto.</p><button class="btn primary" data-a="yPromover" data-v="' + p.id + '">Subir pro elenco</button>';
   } else if (UI.perfilAba === "contrato" && mine && window.CARREIRA) {
     body = window.CARREIRA.contrato(p);
+  } else if (UI.perfilAba === "contrato" && t && window.CARREIRA) {
+    body = window.CARREIRA.clubNeg(p);
   } else if (UI.perfilAba === "contrato") {
     body = '<dl class="kv"><dt>Time</dt><dd>' + (t ? teamChip(t.id, true) : "Agente livre") + "</dd><dt>Salário</dt><dd>" + money(p.salary) + "/ano</dd><dt>Contrato</dt><dd>" + p.contract + " temporada(s)</dd><dt>Valor de mercado</dt><dd>" + money(VM.valueFor(p)) + "</dd></dl>" +
       (mine ? '<div class="row"><button class="btn" data-a="renovar" data-v="' + p.id + '">Renovar 3 temporadas</button><button class="btn ghost" data-a="liberar" data-v="' + p.id + '">Liberar</button>' +
@@ -425,9 +465,17 @@ VIEWS.staff = function () {
    --------------------------------------------------------------------- */
 VIEWS.treino = function () {
   var s = S(), t = me();
-  var tabs = seg("treinoAba", UI.treinoAba, [["time", "Treino do time"], ["mapas", "Treino de mapas"], ["saude", "Saúde e desgaste"]]);
+  var tabs = seg("treinoAba", UI.treinoAba, [["time", "Treino do time"], ["mapas", "Treino de mapas"], ["agentes", "Agentes"], ["saude", "Saúde e desgaste"]]);
   var body;
-  if (UI.treinoAba === "mapas") {
+  if (UI.treinoAba === "agentes") {
+    body = '<div class="card"><h3>Aprender agentes</h3><p class="muted">Até 2 jogadores treinando ao mesmo tempo. Agente da mesma função sai mais rápido; jovens, boa Utilitária/Leitura e técnico melhor aceleram. Enquanto aprende, ele já pode usar o agente com penalidade menor.</p>' +
+      t.roster.map(VM.P).map(function (p) {
+        var ap = p.aprendendo, opts = VM.AGENTS.filter(function (a) { return p.agents.indexOf(a) < 0; });
+        return '<div class="lrow">' + face(p, "sm") + "<div><strong>" + esc(p.nick) + "</strong> " + roleTag(p.role) + '<small class="muted">' + esc(p.agents.join(", ")) + "</small></div>" +
+          (ap ? '<div class="lprog"><span>' + esc(ap.a) + " · " + Math.round(ap.prog) + '%</span><i><b style="width:' + Math.round(ap.prog) + '%"></b></i></div><button class="btn sm ghost" data-a="pararAgente" data-v="' + p.id + '">Parar</button>'
+            : '<select data-c="aprenderAgente" data-p="' + p.id + '" ' + (p.agents.length >= 5 ? "disabled" : "") + '><option value="">' + (p.agents.length >= 5 ? "pool cheio (5)" : "Treinar agente…") + "</option>" + opts.map(function (a) { return '<option value="' + a + '">' + a + " (" + VM.ROLE_NAME[VM.AGENT_ROLE[a]] + ")</option>"; }).join("") + "</select><span></span>") + "</div>";
+      }).join("") + "</div>";
+  } else if (UI.treinoAba === "mapas") {
     var g = VM.mapGain(t);
     body = '<div class="card"><h3>Escolha 3 mapas pra treinar</h3><p class="muted">Cada dia, os mapas marcados sobem <strong>+' + g.toFixed(2) + "</strong> de domínio (técnico nível " + VM.staffLvl(t, "tecnico") + (s.treino === "tatica" ? " + treino tático" : "") + "). Os outros caem 0,08 por dia. Domínio pesa na força do time e no veto.</p>" +
       '<div class="mapcards">' + s.mapas.map(function (m) {
@@ -527,11 +575,24 @@ VIEWS.taticas = function () {
 /* ---------------------------------------------------------------------
    Mercado
    --------------------------------------------------------------------- */
+function redeView() {
+  var s = S(), t = me(), lv = VM.staffLvl(t, "olheiro"), reg = s.olheiroRegiao || "";
+  var regs = [["", "— sem missão —"], ["livres", "Agentes livres"]].concat(LIGAS.map(function (l) { return [l, s.ligasNome[l]]; }));
+  var reps = (s.relatorios || []).slice(0, 30).map(function (r) {
+    var p = VM.P(r.pid); if (!p) return "";
+    return '<tr><td><button class="plink" data-a="perfil" data-v="' + p.id + '">' + face(p, "xs") + "<strong>" + esc(p.nick) + "</strong></button></td><td>" + (p.teamId ? teamChip(p.teamId) : '<span class="muted">livre</span>') + "</td><td>" + roleTag(p.role) + '</td><td class="num">' + p.age + "</td><td>" + ART.stars(VM.playerStars(p)) + "</td><td>" + ART.stars(VM.potStars(p)) + '</td><td><span class="chip ' + (r.nota === "Joia" ? "ok" : r.nota === "Pronto pra ser titular" ? "warn" : "") + '">' + esc(r.nota) + "</span></td></tr>";
+  }).join("");
+  return '<p class="muted">Mande seu olheiro (nível ' + lv + ") pra uma região. No fim de cada fase ele observa " + (2 + lv) + " jogadores de lá — atributos exatos liberados — e marca as joias.</p>" +
+    '<div class="row"><span class="muted small">Missão atual</span><select data-c="scoutReg">' + regs.map(function (r) { return '<option value="' + r[0] + '" ' + (reg === r[0] ? "selected" : "") + ">" + esc(r[1]) + "</option>"; }).join("") + "</select></div>" +
+    '<div class="tblwrap"><table class="lb"><thead><tr><th>Jogador</th><th>Time</th><th>Função</th><th class="num">Idade</th><th>Atual</th><th>Potencial</th><th>Avaliação</th></tr></thead><tbody>' + (reps || '<tr><td colspan="7"><p class="empty">NENHUM RELATÓRIO AINDA — O PRIMEIRO CHEGA NO FIM DA FASE</p></td></tr>') + "</tbody></table></div>";
+}
+ACT.scoutReg = function (v) { if (!v) { S().olheiroRegiao = null; persist(); render(); return; } var r = VM.scoutRegion(v); persist(); toast(r.msg); };
 VIEWS.mercado = function () {
   var s = S(), open = VM.marketOpen();
   var banner = open ? '<div class="banner ok">Janela <strong>aberta</strong> — fecha quando o primeiro dia da fase for jogado.</div>'
     : '<div class="banner">Janela <strong>fechada</strong>. Abre no início da próxima fase e na pré-temporada.</div>';
-  var abas = seg("mAba", UI.mercadoAba, [["jogadores", "Jogadores"], ["livres", "Agentes livres (" + s.freeAgents.length + ")"], ["observados", "Observados (" + Object.keys(s.scout || {}).length + ")"]]);
+  var abas = seg("mAba", UI.mercadoAba, [["jogadores", "Jogadores"], ["livres", "Agentes livres (" + s.freeAgents.length + ")"], ["observados", "Observados (" + Object.keys(s.scout || {}).length + ")"], ["rede", "Rede de olheiros"]]);
+  if (UI.mercadoAba === "rede") return '<div class="card"><div class="head"><div><h2>Olheiros</h2></div></div>' + abas + redeView() + "</div>";
   var filtros = '<div class="filters"><input id="busca" placeholder="Buscar jogador ou time" value="' + esc(UI.busca) + '" data-in="busca">' +
     (UI.mercadoAba === "jogadores" ? '<select data-c="mLiga"><option value="todas">Todas as ligas</option>' + LIGAS.map(function (l) {
       return '<option value="' + l + '" ' + (UI.mercadoLiga === l ? "selected" : "") + ">" + esc(s.ligasNome[l]) + "</option>"; }).join("") + "</select>" : "") +
@@ -586,11 +647,11 @@ VIEWS.competicoes = function () {
     }).join("") + '</div><p class="muted">Campeão e vice do Stage 2 vão direto pro Champions. As outras duas vagas de cada liga saem por CP.</p>';
   } else if (UI.compAba === "formato") {
     body = '<div class="card fmt"><ol>' +
-      "<li><strong>Kickoff</strong> — 2 grupos de 6 (Bo3) e final four em dupla eliminação. Top 3 ao Masters Santiago. <em>Simplificado: o real é tripla eliminação.</em></li>" +
+      "<li><strong>Kickoff</strong> — 12 times em tripla eliminação (Bo3; finais de chave Bo5). Os vencedores das chaves superior, intermediária e inferior vão ao Masters Santiago (1º, 2º e 3º).</li>" +
       "<li><strong>Masters Santiago</strong> — 12 times. Campeões de liga direto aos playoffs; os outros 8 na fase suíça. Playoffs em dupla eliminação, finais Bo5.</li>" +
       "<li><strong>Stage 1</strong> — 2 grupos de 6, Bo3 (+1 CP por vitória). Top 4 de cada grupo aos playoffs. Top 3 ao Masters London. Challengers Stage 1 em paralelo.</li>" +
       "<li><strong>Masters London</strong> — mesmo formato. Challengers Stage 2 em paralelo define quem vai aos Play-Ins.</li>" +
-      "<li><strong>Stage 2</strong> — 1º e 2º de cada grupo direto aos playoffs; 3º a 6º vão aos Play-Ins com 4 times do Challengers (Americas: campeões de NA, Brasil e LATAM + melhor vice; outras regiões: top 4 do Challengers). <em>Play-Ins simplificados em 4 grupos de 3.</em></li>" +
+      "<li><strong>Stage 2</strong> — 1º e 2º de cada grupo direto aos playoffs; 3º a 6º vão aos Play-Ins com 4 times do Challengers (Americas: campeões de NA, Brasil e LATAM + melhor vice; outras regiões: top 4 do Challengers). Play-Ins com 12 times em dupla eliminação: saem 4 classificados. Playoffs de 8: os 4 diretos começam na chave superior, os 4 dos Play-Ins na inferior.</li>" +
       "<li><strong>Champions</strong> — 16 times: 4 grupos GSL e playoffs de 8 em dupla eliminação.</li>" +
       "<li><strong>Pré-temporada</strong> — evolução, contratos, janela aberta.</li></ol></div>";
   } else {
@@ -614,16 +675,25 @@ VIEWS.estatisticas = function () {
     if (UI.statLiga === "time") return p.teamId === t.id;
     return true;
   });
-  function acs(p) { return p.stats.acsSum / p.stats.mapas; }
-  ps.sort(function (a, b) { return acs(b) - acs(a); });
-  var rows = ps.slice(0, 40).map(function (p, i) {
+  var mn = UI.statLiga === "time" ? 1 : 3;
+  ps = ps.filter(function (p) { return p.stats.mapas >= mn; });
+  var F = {
+    acs:function (st) { return st.acsSum / st.mapas; }, kd:function (st) { return st.d ? st.k / st.d : st.k; },
+    adr:function (st) { return st.rd ? st.dmg / st.rd : 0; }, kast:function (st) { return st.rd ? st.kast / st.rd * 100 : 0; },
+    fk:function (st) { return (st.fk || 0) - (st.fd || 0); }, cl:function (st) { return st.cl || 0; }, mk:function (st) { return st.mk || 0; }
+  };
+  var ord = UI.statOrd || "acs";
+  ps.sort(function (a, b) { return F[ord](b.stats) - F[ord](a.stats); });
+  var rows = ps.slice(0, 50).map(function (p, i) {
     var st = p.stats;
-    return '<tr class="' + (p.teamId === t.id ? "you" : "") + '"><td class="num">' + (i + 1) + '</td><td><button class="plink" data-a="perfil" data-v="' + p.id + '">' + face(p, "xs") + "<strong>" + esc(p.nick) + "</strong></button></td><td>" + teamChip(p.teamId) + "</td><td>" + roleTag(p.role) + '</td><td class="num">' + st.mapas + '</td><td class="num">' + st.k + '</td><td class="num">' + st.d + '</td><td class="num">' + (st.d ? (st.k / st.d).toFixed(2) : "—") + '</td><td class="num big">' + Math.round(acs(p)) + "</td></tr>";
+    return '<tr class="' + (p.teamId === t.id ? "you" : "") + '"><td class="num">' + (i + 1) + '</td><td><button class="plink" data-a="perfil" data-v="' + p.id + '">' + face(p, "xs") + "<strong>" + esc(p.nick) + "</strong></button></td><td>" + teamChip(p.teamId) + "</td><td>" + roleTag(p.role) + '</td><td class="num">' + st.mapas + '</td><td class="num">' + st.k + "/" + st.d + "/" + st.a + '</td><td class="num">' + F.kd(st).toFixed(2) + '</td><td class="num">' + Math.round(F.adr(st)) + '</td><td class="num">' + Math.round(F.kast(st)) + '%</td><td class="num">' + (st.fk || 0) + "/" + (st.fd || 0) + '</td><td class="num">' + (st.cl || 0) + '</td><td class="num">' + (st.mk || 0) + '</td><td class="num big">' + Math.round(F.acs(st)) + "</td></tr>";
   }).join("");
   return '<div class="card"><div class="head"><h2>Líderes da temporada</h2>' + seg("statLiga", UI.statLiga, [["time", "Meu time"], ["minha", "Minha liga"], ["todas", "Todas"]], "sm") + "</div>" +
-    '<div class="tblwrap"><table class="lb"><thead><tr><th>#</th><th>Jogador</th><th>Time</th><th>Função</th><th class="num">Mapas</th><th class="num">K</th><th class="num">D</th><th class="num">K/D</th><th class="num">ACS</th></tr></thead><tbody>' +
-    (rows || '<tr><td colspan="9" class="muted">Ninguém jogou ainda nesta temporada.</td></tr>') + "</tbody></table></div></div>";
+    '<div class="row"><span class="muted small">Ordenar por</span>' + seg("statOrd", ord, [["acs", "ACS"], ["kd", "K/D"], ["adr", "ADR"], ["kast", "KAST"], ["fk", "FK−FD"], ["cl", "Clutches"], ["mk", "3K+"]], "sm") + "</div>" +
+    '<div class="tblwrap"><table class="lb"><thead><tr><th>#</th><th>Jogador</th><th>Time</th><th>Função</th><th class="num">Mapas</th><th class="num">K/D/A</th><th class="num">K/D</th><th class="num">ADR</th><th class="num">KAST</th><th class="num">FK/FD</th><th class="num">CL</th><th class="num">3K+</th><th class="num">ACS</th></tr></thead><tbody>' +
+    (rows || '<tr><td colspan="13" class="muted">Ninguém jogou ainda nesta temporada.</td></tr>') + '</tbody></table></div><p class="muted small">Mínimo de ' + mn + " mapa(s). ADR = dano por round; KAST = % de rounds com abate, assistência ou sobrevivência.</p></div>";
 };
+ACT.statOrd = function (v) { UI.statOrd = v; render(); };
 
 /* ---------------------------------------------------------------------
    Finanças
@@ -650,7 +720,9 @@ VIEWS.config = function () {
   var som = '<div class="card"><h3>Som</h3><div class="row"><button class="btn ' + (A.sfx ? "primary" : "ghost") + '" data-a="audioSfx">Efeitos: ' + (A.sfx ? "ligados" : "desligados") + '</button><button class="btn ' + (A.music ? "primary" : "ghost") + '" data-a="audioMusic">Música do menu: ' + (A.music ? "ligada" : "desligada") + '</button></div><label class="nf"><span>Volume <b>' + Math.round(A.vol * 100) + '%</b></span><input type="range" min="0" max="1" step="0.05" value="' + A.vol + '" data-c="audioVol"></label><p class="muted">Tiros, spike, explosão e cliques são gerados pelo navegador. Na velocidade Turbo os efeitos da partida ficam mudos.</p></div>';
   var dk = S().dif || "normal";
   var difc = '<div class="card"><h3>Dificuldade</h3><div class="cchips">' + Object.keys(VM.DIF).map(function (k) { return '<button class="cchip ' + (dk === k ? "on" : "") + '" data-a="setDif" data-v="' + k + '">' + VM.DIF[k].nome + "</button>"; }).join("") + '</div><p class="muted">Muda a força da IA, quanto ela lê suas táticas, dinheiro, lesões, preço do mercado e a paciência da diretoria. Vale a partir de agora.</p></div>';
-  return som + difc + '<div class="grid2"><div class="card"><h3>Save</h3><p class="muted">O jogo salva sozinho neste navegador depois de cada dia. Pra backup ou levar pra outro PC, exporte o texto e guarde num arquivo.</p>' +
+  var dc = dicasCfg();
+  var dicas = '<div class="card"><h3>Dicas</h3><div class="row"><button class="btn ' + (dc.off ? "ghost" : "primary") + '" data-a="dicaOff">Dicas nas telas: ' + (dc.off ? "desligadas" : "ligadas") + '</button><button class="btn ghost" data-a="dicaReset">Mostrar todas de novo</button></div></div>';
+  return som + difc + dicas + '<div class="grid2"><div class="card"><h3>Save</h3><p class="muted">O jogo salva sozinho neste navegador depois de cada dia. Pra backup ou levar pra outro PC, exporte o texto e guarde num arquivo.</p>' +
     '<div class="row"><button class="btn" data-a="exportar">Exportar save</button><button class="btn ghost" data-a="importar">Importar save</button></div>' +
     '<textarea id="saveBox" rows="4" placeholder="O save aparece aqui ao exportar. Pra importar, cole aqui e clique em Importar."></textarea></div>' +
     '<div class="card"><h3>Trocar de time / recomeçar</h3><p class="muted">Apaga a carreira atual e volta pra escolha de time.</p>' +
@@ -730,6 +802,8 @@ ACT.statLiga = function (v) { UI.statLiga = v; render(); };
 ACT.staffRole = function (v) { UI.staffRole = v; render(); };
 ACT.contratarStaff = function (v) { var r = VM.hireStaff(v); persist(); toast(r.msg, r.ok); };
 ACT.demitir = function (v) { var r = VM.fireStaff(v); persist(); toast(r.msg, r.ok); };
+ACT.aprenderAgente = function (v, el) { if (!v) return; var r = VM.learnAgent(el.getAttribute("data-p"), v); persist(); toast(r.msg, r.ok); };
+ACT.pararAgente = function (v) { var r = VM.stopLearning(v); persist(); toast(r.msg); };
 ACT.treinoAba = function (v) { UI.treinoAba = v; render(); };
 ACT.treino = function (v) { S().treino = v; persist(); render(); };
 ACT.treinoMapa = function (v) {
@@ -757,6 +831,7 @@ ACT.novoJogo = function () {
   });
 };
 /* change / input */
+ACT.dicaReset = function () { try { localStorage.setItem("vct_dicas", "{}"); } catch (e) {} toast("As dicas vão aparecer de novo."); };
 ACT.setDif = function (v) { VM.setDif(v); persist(); toast("Dificuldade: " + VM.DIF[v].nome + "."); };
 ACT.audioSfx = function () { if (window.SFX) window.SFX.set("sfx", !window.SFX.cfg.sfx); render(); };
 ACT.audioMusic = function () { if (window.SFX) window.SFX.set("music", !window.SFX.cfg.music); render(); };

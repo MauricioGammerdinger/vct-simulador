@@ -1,0 +1,9 @@
+{
+  "name": "vct-manager-2026",
+  "private": true,
+  "description": "Jogo de manager de Valorant em HTML e JavaScript puro",
+  "scripts": {
+    "test": "node tests/rodar.js",
+    "test:navegador": "node tests/navegador.js"
+  }
+}

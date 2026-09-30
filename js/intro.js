@@ -65,21 +65,27 @@ function brand() { return '<div class="menulogo"><span class="ml1">VCT</span><sp
 
 function viewMenu() {
   var has = VM.hasSave(), info = "";
-  if (has) {
-    try {
-      var raw = JSON.parse(localStorage.getItem("vctmanager_save_v1"));
-      var t = raw.teams[raw.userTeam];
-      info = '<div class="savecard"><div class="k">Carreira salva</div><div class="sc">' + '<span class="cw lg">' + ART.crest(t.tag) + "</span><div><strong>" + esc(t.nome) + "</strong><small>" +
-        (raw.manager ? esc(raw.manager.nick) + " · " : "") + "Temporada " + raw.temporada + "</small></div></div>" +
-        '<button class="btn primary big" data-a="iContinuar">Continuar carreira</button></div>';
-    } catch (e) { info = ""; }
+  var slots = [1, 2, 3].map(function (n) { return VM.slotInfo(n); });
+  var cur = slots[VM.getSlot() - 1] || slots.filter(Boolean)[0];
+  if (cur) {
+    info = '<div class="savecard"><div class="k">Última carreira · espaço ' + cur.slot + '</div><div class="sc">' + '<span class="cw lg">' + ART.crest(cur.tag, null, cur.custom) + "</span><div><strong>" + esc(cur.team) + "</strong><small>" +
+      esc(cur.manager) + " · Temporada " + cur.temporada + " · " + esc(cur.dif) + "</small></div></div>" +
+      '<button class="btn primary big" data-a="iCarregar" data-v="' + cur.slot + '">Continuar carreira</button></div>';
   }
-  var items = [["iNovo", "Novo jogo"], ["iModal", "Como jogar", "tutorial"], ["iModal", "Importar save", "importar"], ["iModal", "Créditos", "creditos"]];
-  if (has) items.unshift(["iContinuar", "Continuar"]);
+  var items = [["iNovoSlot", "Novo jogo"], ["iModal", "Carreiras salvas", "slots"], ["iModal", "Como jogar", "tutorial"], ["iModal", "Importar save", "importar"], ["iModal", "Créditos", "creditos"]];
+  if (cur) items.unshift(["iCarregar", "Continuar", String(cur.slot)]);
+  function slotRow(n, novo) {
+    var x = slots[n - 1];
+    return '<div class="slotrow ' + (x ? "" : "empty") + '"><b class="sn">' + n + "</b>" + (x ? '<span class="cw md">' + ART.crest(x.tag, null, x.custom) + "</span><div><strong>" + esc(x.team) + "</strong><small>" + esc(x.manager) + " · Temporada " + x.temporada + " · " + esc(x.fase) + " · " + esc(x.dif) + " · " + x.titulos + " título(s)</small></div>" : '<div><strong>Espaço vazio</strong><small>Nenhuma carreira aqui.</small></div>') +
+      '<div class="row">' + (novo ? '<button class="btn sm ' + (x ? "danger" : "primary") + '" data-a="iNovoEm" data-v="' + n + '">' + (x ? (I.cfSlot === n ? "Clique de novo: substituir" : "Substituir") : "Começar aqui") + "</button>"
+        : (x ? '<button class="btn sm primary" data-a="iCarregar" data-v="' + n + '">Carregar</button><button class="btn sm ghost" data-a="iApagarSlot" data-v="' + n + '">' + (I.cfDel === n ? "Clique de novo pra apagar" : "Apagar") + "</button>" : "")) + "</div></div>";
+  }
   var modal = "";
   if (I.modal === "tutorial") modal = '<h2>Como jogar</h2><ol class="howto"><li>Crie seu manager e distribua os pontos de atributo — eles têm efeito real.</li><li>Escolha uma organização: ligas VCT ou qualquer Challengers.</li><li>Assine o contrato e use <b>CONTINUAR</b> no topo pra avançar os dias. <b>»</b> vai direto pro seu próximo jogo.</li><li>Antes de cada jogo: veto, composição e plano por mapa. Durante: compra, tática por round e pausas.</li><li>Entre os jogos: treino, táticas por mapa, staff, mercado e finanças.</li></ol>';
+  if (I.modal === "slots") modal = "<h2>Carreiras salvas</h2>" + [1, 2, 3].map(function (n) { return slotRow(n, false); }).join("") + '<p class="muted small">Cada espaço guarda uma carreira neste navegador. Pra backup, use Configurações → Exportar save.</p>';
+  if (I.modal === "novoslot") modal = "<h2>Em qual espaço salvar?</h2>" + [1, 2, 3].map(function (n) { return slotRow(n, true); }).join("");
   if (I.modal === "creditos") modal = '<h2>Créditos</h2><p>Projeto pessoal de fã, feito pra jogar por diversão.</p><p class="muted">Criado sob a política "Legal Jibber Jabber" da Riot Games usando recursos de propriedade da Riot Games. A Riot Games não endossa nem patrocina este projeto. Nomes de times e jogadores vêm dos elencos públicos (vlr.gg). Avatares, escudos, troféu e mapas são ilustrações geradas pelo jogo.</p>';
-  if (I.modal === "importar") modal = '<h2>Importar save</h2><p class="muted">Cole o texto exportado em Configurações → Exportar save.</p><textarea id="impBox" rows="6"></textarea><div class="row end"><button class="btn primary" data-a="iImportar">Importar</button></div>';
+  if (I.modal === "importar") modal = '<h2>Importar save</h2><p class="muted">Cole o texto exportado em Configurações → Exportar save. Ele vai pro espaço ' + VM.getSlot() + '.</p><textarea id="impBox" rows="6"></textarea><div class="row end"><button class="btn primary" data-a="iImportar">Importar</button></div>';
   return '<div class="menu">' + wall() + '<div class="menushade"></div>' +
     '<div class="menuleft">' + brand() + '<nav class="menunav">' + items.map(function (it, i) {
       return '<button data-a="' + it[0] + '" data-v="' + (it[2] || "") + '" class="' + (i === 0 ? "first" : "") + '">' + it[1] + "</button>";
@@ -256,6 +262,25 @@ ACT.iModal = function (v) { I.modal = v; G.render(); };
 ACT.iFechar = function () { I.modal = null; G.render(); };
 ACT.iStop = function () {};
 ACT.iStep = function (v) { I.step = v; G.render(); };
+ACT.iCarregar = function (v) {
+  I.modal = null;
+  if (!VM.load(+v || VM.getSlot())) { G.toast("Não consegui ler o save.", false); return; }
+  startLoading(VM.T(VM.S.userTeam).tag, function () { G.go("inicio"); });
+};
+ACT.iNovoSlot = function () {
+  var free = [1, 2, 3].filter(function (n) { return !VM.slotInfo(n); })[0];
+  if (free && !VM.hasSave()) { VM.setSlot(free); ACT.iNovo(); return; }
+  I.modal = "novoslot"; I.cfSlot = null; G.render();
+};
+ACT.iNovoEm = function (v) {
+  var n = +v;
+  if (VM.slotInfo(n) && I.cfSlot !== n) { I.cfSlot = n; G.render(); return; }
+  VM.setSlot(n); I.cfSlot = null; ACT.iNovo();
+};
+ACT.iApagarSlot = function (v) {
+  var n = +v; if (I.cfDel !== n) { I.cfDel = n; G.render(); return; }
+  VM.deleteSlot(n); I.cfDel = null; G.toast("Espaço " + n + " apagado."); G.render();
+};
 ACT.iContinuar = function () {
   if (!VM.load()) { G.toast("Não consegui ler o save.", false); return; }
   startLoading(VM.T(VM.S.userTeam).tag, function () { G.go("inicio"); });

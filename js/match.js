@@ -135,6 +135,8 @@ function viewPrep() {
       (pool.length ? '<optgroup label="Pool do jogador">' + pool.map(function (a) { return '<option value="' + a + '" ' + (a === cur ? "selected" : "") + ">" + a + metaMark(a) + "</option>"; }).join("") + "</optgroup>" : "") +
       '<optgroup label="Outros agentes">' + others.map(function (a) { return '<option value="' + a + '" ' + (a === cur ? "selected" : "") + ">" + a + metaMark(a) + "</option>"; }).join("") + "</optgroup></select></label>";
   }).join("") + "</div>";
+  var mt = VM.MAP_TRAITS[e.map];
+  var mapNote = mt ? '<div class="card mapnote"><h3>Estrutura · ' + esc(e.map) + "</h3><p>" + esc(mt.txt) + "</p></div>" : "";
   var notes = '<div class="comp-foot"><div class="rolecount">' + ["C", "I", "S", "D"].map(function (r) { return '<span class="r-' + r + '">' + VM.ROLE_NAME[r] + " " + an.cnt[r] + "</span>"; }).join("") + "</div>" +
     (an.notes.length ? '<div class="notes">' + an.notes.map(function (n) { return '<span class="chip warn">' + esc(n) + "</span>"; }).join("") + "</div>" : '<div class="notes"><span class="chip ok">composição equilibrada</span></div>') +
     '<button class="btn sm ghost" data-a="mAutoComp" data-v="' + i + '">Composição automática</button></div>';
@@ -151,7 +153,7 @@ function viewPrep() {
     chips("Estilo na defesa", "estilo.def", tac.estilo ? tac.estilo.def : "padrao", [["padrao", "Equilibrado"], ["agressivo", "Agressivo"], ["defensivo", "Cauteloso"]]) +
     '<p class="muted">Isso atualiza a tática salva do mapa. Durante a partida você pode mudar round a round.</p></div>';
   var dup = M.comps.some(function (c) { var seen = {}, d = false; Object.keys(c).forEach(function (k) { if (seen[c[k]]) d = true; seen[c[k]] = 1; }); return d; });
-  return head() + scrimBox() + tabs + '<div class="grid2 wide"><div class="card"><div class="head"><h3>Composição · ' + esc(e.map) + '</h3><span class="chip">' + esc(sideTxt) + "</span></div>" + agents + notes + "</div>" + tacHtml + "</div>" +
+  return head() + scrimBox() + tabs + '<div class="grid2 wide"><div class="card"><div class="head"><h3>Composição · ' + esc(e.map) + '</h3><span class="chip">' + esc(sideTxt) + "</span></div>" + agents + notes + mapNote + "</div>" + tacHtml + "</div>" +
     (dup ? '<div class="banner bad">Agente repetido em algum mapa — cada agente só pode ser usado por um jogador.</div>' : "") +
     '<div class="row end"><button class="btn primary big" data-a="mComecar" ' + (dup ? "disabled" : "") + ">Começar a partida</button></div>";
 }
@@ -182,8 +184,11 @@ function mySideNext() { var a = nextSideA(); return M.user === "A" ? a : (a === 
 function pcard(p, who) {
   var st = M.dstats[p.id] || { k:0, d:0, a:0 };
   var comp = who === "A" ? M.sim.compA : M.sim.compB;
-  return '<div class="lpc" id="pc-' + p.id + '">' + G.face(p, "sm") + '<span class="lpn"><strong>' + esc(p.nick) + "</strong><small>" + esc(comp[p.id] || "") + '</small></span><span class="lpk" id="ks-' + p.id + '">' + st.k + "/" + st.d + "/" + st.a + "</span></div>";
+  var e = (M.sim.pe || {})[p.id] || { cr:800, ult:0, max:7, arma:null };
+  return '<div class="lpc" id="pc-' + p.id + '">' + G.face(p, "sm") + '<span class="lpn"><strong>' + esc(p.nick) + "</strong><small>" + esc(comp[p.id] || "") + '</small><span class="lpe"><em id="ar-' + p.id + '">' + esc(e.arma || "—") + '</em><em id="pm-' + p.id + '">$' + e.cr + '</em></span><span class="ultp" id="ul-' + p.id + '">' + ultPips(e) + '</span></span><span class="lpk" id="ks-' + p.id + '">' + st.k + "/" + st.d + "/" + st.a + "</span></div>";
 }
+function ultPips(e) { var h = ""; for (var i = 0; i < e.max; i++) h += "<i" + (i < e.ult ? ' class="on"' : "") + "></i>"; return h + (e.ult >= e.max ? "<b>ULT</b>" : ""); }
+function setHtml(id, v) { var n = el(id); if (n) n.innerHTML = v; }
 function roundDots() {
   return M.sim.rounds.map(function (r) {
     return '<i class="' + (r.w === "A" ? "a" : "b") + (r.upset ? " up" : "") + (r.n === 12 ? " half" : "") + '" title="R' + r.n + '"></i>';
@@ -201,6 +206,7 @@ function controlsHtml() {
     ? '<div class="crow"><span class="lbl">Próx. ataque</span><div class="cchips">' + chips("atk.plano", tac.atk.plano, Object.keys(VM.ATK_PLANOS).map(function (k) { return [k, VM.ATK_PLANOS[k].split(" (")[0]]; })) + '</div><div class="cchips">' + chips("atk.site", tac.atk.site, [["variar", "Variar"]].concat(sites.map(function (x) { return [x, x]; }))) + "</div></div>"
     : '<div class="crow"><span class="lbl">Próx. defesa</span><div class="cchips">' + chips("def.setup", tac.def.setup, Object.keys(VM.DEF_SETUPS).map(function (k) { return [k, VM.DEF_SETUPS[k].split(" (")[0]]; })) + '</div><div class="cchips">' + chips("def.site", tac.def.site, sites.map(function (x) { return [x, x]; })) + "</div></div>";
   return '<div class="crow"><span class="lbl">Compra</span>' + G.seg("mCall", call, [["auto", "Auto"], ["full", "Full"], ["force", "Force"], ["eco", "Eco"]], "sm") +
+    '<span class="lbl">Ults</span>' + G.seg("mUlt", (u === "A" ? s.ultA : s.ultB) || "auto", [["auto", "Auto"], ["guardar", "Guardar"], ["usar", "Usar agora"]], "sm") +
     '<span class="lbl">Estilo</span>' + G.seg("mStyle", style, [["padrao", "Padrão"], ["agressivo", "Agressivo"], ["defensivo", "Defensivo"]], "sm") + "</div>" + tacRow +
     '<div class="crow"><button class="btn sm" data-a="mTimeout" ' + (to > 0 ? "" : "disabled") + ">Pausa tática (" + to + ")</button>" +
     G.seg("mVel", M.paused ? "pausa" : M.speed, [["pausa", M.paused ? "▶ Continuar" : "❚❚ Pausar"], ["normal", "Normal"], ["rapido", "Rápido"], ["turbo", "Turbo"]], "sm") +
@@ -431,6 +437,7 @@ function startRound(now) {
   var preStats = clone(s.stats);
   var r = VM.stepRound(s);
   if (M.user === "A") s.callA = "auto"; else s.callB = "auto";
+  if (M.user === "A" && s.ultA === "usar") s.ultA = "auto"; if (M.user === "B" && s.ultB === "usar") s.ultB = "auto";
   var plan = buildPlan(r);
   M.cur = { r:r, pre:pre, preStats:preStats, t0:now, D:SPEED[M.speed], plan:plan, dead:{}, drawn:0, plantShown:false, ended:false, alive:{ A:5, B:5 }, utilOn:{} };
   clearMarks();
@@ -443,7 +450,10 @@ function startRound(now) {
     if (n) { n.className = "sidechip " + sd; n.textContent = sd === "atk" ? "ATAQUE" : "DEFESA"; }
     setTxt("by-" + who, VM.BUY_NAME[who === "A" ? r.buyA : r.buyB]);
     setTxt("to-" + who, who === "A" ? s.toA : s.toB);
-    M.five[who].forEach(function (p) { var c = el("pc-" + p.id); if (c) c.classList.remove("dead"); var d = el("d-" + p.id); if (d) { d.classList.remove("dead"); d.style.display = ""; } });
+    var ul = (who === "A" ? r.ultsA : r.ultsB) || [];
+    M.five[who].forEach(function (p) { var c = el("pc-" + p.id); if (c) { c.classList.remove("dead"); c.classList.toggle("ulting", ul.indexOf(p.id) >= 0); } var d = el("d-" + p.id); if (d) { d.classList.remove("dead"); d.style.display = ""; }
+      var e = r.pe && r.pe[p.id]; if (e) { setTxt("ar-" + p.id, e.arma + (e.drop ? " ⇄" : "")); if (ul.indexOf(p.id) >= 0) setHtml("ul-" + p.id, ultPips({ ult:0, max:e.max })); } });
+    if (ul.length) M.feed.unshift({ t:teamOf(who).tag + ": " + ul.map(function (id) { return VM.P(id).nick; }).join(", ") + " usa" + (ul.length > 1 ? "m" : "") + " ultimate", k:"to" });
   });
   var ctl = el("mctl"); if (ctl) ctl.innerHTML = controlsHtml();
 }
@@ -516,6 +526,7 @@ function endRound(now) {
   M.five.A.concat(M.five.B).forEach(function (p) { var ds = M.dstats[p.id]; if (ds) setTxt("ks-" + p.id, ds.k + "/" + ds.d + "/" + ds.a); });
   setTxt("sb-sa", s.sa); setTxt("sb-sb", s.sb);
   setTxt("cr-A", "$" + s.credA); setTxt("cr-B", "$" + s.credB);
+  if (r.pe) M.five.A.concat(M.five.B).forEach(function (p) { var e = r.pe[p.id]; if (!e) return; setTxt("pm-" + p.id, "$" + e.cr); setHtml("ul-" + p.id, ultPips(e)); var cc = el("pc-" + p.id); if (cc) cc.classList.remove("ulting"); });
   M.feed.unshift({ t:"R" + r.n + " · " + r.txt, k:r.w === M.user ? "w" : "l", up:r.upset });
   var f = el("mfeed"); if (f) f.innerHTML = feedHtml();
   var d = el("sb-dots"); if (d) d.innerHTML = roundDots();
@@ -597,18 +608,29 @@ function viewRelatorio() {
   });
   var agg = {};
   res.maps.forEach(function (m) { Object.keys(m.stats).forEach(function (pid) {
-    var x = m.stats[pid], a = agg[pid] = agg[pid] || { k:0, d:0, a:0, dmg:0, r:0 };
-    a.k += x.k; a.d += x.d; a.a += x.a; a.dmg += x.dmg; a.r += m.sa + m.sb; }); });
+    var x = m.stats[pid], a = agg[pid] = agg[pid] || { k:0, d:0, a:0, dmg:0, r:0, kast:0, fk:0, fd:0, cl:0, mk:0 };
+    a.k += x.k; a.d += x.d; a.a += x.a; a.dmg += x.dmg; a.r += m.sa + m.sb; ["kast", "fk", "fd", "cl", "mk"].forEach(function (f) { a[f] += x[f] || 0; }); }); });
   function acs(id) { return (agg[id].dmg + agg[id].k * 50) / Math.max(1, agg[id].r); }
   var ids = Object.keys(agg).sort(function (a, b) { return acs(b) - acs(a); });
   var mvp = VM.P(ids[0]), myIds = VM.activeFive(G.me()).map(function (p) { return p.id; });
-  var table = '<table class="stat"><thead><tr><th>Jogador</th><th>Time</th><th class="num">K</th><th class="num">D</th><th class="num">A</th><th class="num">ACS</th></tr></thead><tbody>' +
-    ids.map(function (pid) { var p = VM.P(pid), a = agg[pid];
-      return '<tr class="' + (myIds.indexOf(pid) >= 0 ? "you" : "") + '"><td><span class="plink">' + G.face(p, "xs") + "<strong>" + esc(p.nick) + "</strong></span></td><td>" + G.teamChip(p.teamId) + '</td><td class="num">' + a.k + '</td><td class="num">' + a.d + '</td><td class="num">' + a.a + '</td><td class="num">' + Math.round(acs(pid)) + "</td></tr>"; }).join("") + "</tbody></table>";
+  var table = '<div class="tblwrap"><table class="stat adv"><thead><tr><th>Jogador</th><th>Time</th><th class="num">K</th><th class="num">D</th><th class="num">A</th><th class="num">+/−</th><th class="num">ADR</th><th class="num">KAST</th><th class="num">FK</th><th class="num">FD</th><th class="num">CL</th><th class="num">3K+</th><th class="num">ACS</th></tr></thead><tbody>' +
+    ids.map(function (pid) { var p = VM.P(pid), a = agg[pid], df = a.k - a.d;
+      return '<tr class="' + (myIds.indexOf(pid) >= 0 ? "you" : "") + '"><td><span class="plink">' + G.face(p, "xs") + "<strong>" + esc(p.nick) + "</strong></span></td><td>" + G.teamChip(p.teamId) + '</td><td class="num">' + a.k + '</td><td class="num">' + a.d + '</td><td class="num">' + a.a + '</td><td class="num ' + (df > 0 ? "pos" : df < 0 ? "neg" : "") + '">' + (df > 0 ? "+" : "") + df + '</td><td class="num">' + Math.round(a.dmg / Math.max(1, a.r)) + '</td><td class="num">' + Math.round(a.kast / Math.max(1, a.r) * 100) + '%</td><td class="num">' + a.fk + '</td><td class="num">' + a.fd + '</td><td class="num">' + a.cl + '</td><td class="num">' + a.mk + '</td><td class="num big">' + Math.round(acs(pid)) + "</td></tr>"; }).join("") + "</tbody></table></div>";
+  var PL = VM.ATK_PLANOS, DS = VM.DEF_SETUPS;
+  var rounds = res.maps.map(function (m, mi) {
+    var rs = (m.rounds || []).map(function (r, i) {
+      var mineW = r.w === u, sideU = u === "A" ? r.sideA : (r.sideA === "atk" ? "def" : "atk");
+      return '<div class="rr ' + (mineW ? "w" : "l") + '"><b>' + (i + 1) + '</b><span class="sd ' + sideU + '">' + (sideU === "atk" ? "ATQ" : "DEF") + "</span><em>" + esc(VM.BUY_NAME[u === "A" ? r.buyA : r.buyB] || "") + " × " + esc(VM.BUY_NAME[u === "A" ? r.buyB : r.buyA] || "") + "</em><span>" + esc(r.plano ? PL[r.plano].split(" (")[0] + " · " + (r.site || "") : "") + (r.setup ? " vs " + DS[r.setup].split(" (")[0] : "") + "</span><p>" + esc(r.txt || "") + "</p></div>";
+    }).join("");
+    var sc = u === "A" ? m.sa + "–" + m.sb : m.sb + "–" + m.sa;
+    return '<details class="rdet"' + (mi === 0 ? " open" : "") + "><summary><b>" + esc(m.map) + "</b> " + sc + (m.winner === u ? ' <span class="chip ok">vitória</span>' : ' <span class="chip bad">derrota</span>') + '</summary><div class="rlist">' + rs + "</div></details>";
+  }).join("");
   return head() + '<div class="card mapdone ' + (won ? "won" : "lost") + '"><div class="k">Fim de série</div><h2>' + (won ? "VITÓRIA" : "DERROTA") + " POR " + Math.max(res.wa, res.wb) + "–" + Math.min(res.wa, res.wb) + "</h2>" +
     '<div class="mvp">' + G.face(mvp, "lg") + "<div><small>MVP da série</small><strong>" + esc(mvp.nick) + "</strong><span>" + agg[ids[0]].k + "/" + agg[ids[0]].d + "/" + agg[ids[0]].a + " · " + esc(VM.T(mvp.teamId).tag) + "</span></div></div></div>" +
     '<div class="grid2"><div class="card"><h3>Por que deu nisso</h3><ul class="why">' + lines.map(function (l) { return "<li>" + l + "</li>"; }).join("") + "</ul></div>" +
-    '<div class="card"><h3>Estatísticas da série</h3>' + table + "</div></div>" +
+    '<div class="card"><h3>Estatísticas da série</h3>' + table + '<p class="muted small">ADR: dano por round · KAST: % de rounds com abate, assistência ou sobrevivência · FK/FD: primeiro abate/primeira morte · CL: clutches vencidos · 3K+: rounds com 3 ou mais abates.</p></div></div>' +
+    (window.CARREIRA && window.CARREIRA.pressBox ? window.CARREIRA.pressBox(res) : "") +
+    '<div class="card"><h3>Round a round</h3>' + rounds + "</div>" +
     '<div class="row end"><button class="btn primary big" data-a="mSair">Voltar ao clube</button></div>';
 }
 
@@ -634,6 +656,7 @@ ACT.mPrepTac = function (v, e) {
   rr();
 };
 ACT.mComecar = function () { M.mapIdx = 0; beginMap(); G.UI.scrollTop = 0; rr(); };
+ACT.mUlt = function (v) { if (M.user === "A") M.sim.ultA = v; else M.sim.ultB = v; var c = el("mctl"); if (c) c.innerHTML = controlsHtml(); };
 ACT.mCall = function (v) { if (M.user === "A") M.sim.callA = v; else M.sim.callB = v; var c = el("mctl"); if (c) c.innerHTML = controlsHtml(); };
 ACT.mStyle = function (v) { var tc = myTac(); if (tc.estilo) tc.estilo[mySideNext()] = v; else if (M.user === "A") M.sim.styleA = v; else M.sim.styleB = v; var c = el("mctl"); if (c) c.innerHTML = controlsHtml(); };
 ACT.mLiveTac = function (v, e) { var p = e.getAttribute("data-k").split("."); myTac()[p[0]][p[1]] = v; var c = el("mctl"); if (c) c.innerHTML = controlsHtml(); };

@@ -154,5 +154,71 @@ function metaView() {
     }).join("");
 }
 
-window.CARREIRA = { conversa:conversa, contrato:contrato, demitido:demitido, metaView:metaView, gauge:gauge, confColor:confColor };
+/* ---------------------------------------------------------------------
+   NEGOCIAÇÃO COM CLUBES (perfil de jogador de outro time)
+   --------------------------------------------------------------------- */
+function clubNeg(p) {
+  var buyer = me(), seller = VM.T(p.teamId), n = VM.negState(p.id);
+  var ask = VM.askPrice(p), pt = VM.personalTerms(p, buyer), starter = VM.isStarter(p);
+  var st = UI.cneg && UI.cneg.pid === p.id ? UI.cneg : (UI.cneg = { pid:p.id, tipo:"compra", valor:Math.round(ask * 0.85 / 1000) * 1000, salario:pt, anos:2, msg:null, status:null });
+  var known = VM.isScouted(p.id);
+  var tabs = G.seg("cnTipo", st.tipo, [["compra", "Comprar"], ["emprestimo", "Emprestar"], ["multa", "Pagar multa"]], "sm");
+  var body = "";
+  if (st.tipo === "compra") {
+    body = '<label class="nf"><span>Oferta ao clube <b id="cnValV">' + money(st.valor) + '</b></span><input type="range" min="' + Math.round(ask * 0.5 / 1000) * 1000 + '" max="' + Math.round(ask * 1.4 / 1000) * 1000 + '" step="5000" value="' + st.valor + '" data-cn="valor"></label>' +
+      '<p class="muted small">' + (known ? "Seu olheiro estima que o " + esc(seller.tag) + " aceita perto de <b>" + money(ask) + "</b>." : "Observe o jogador pra ter uma estimativa do preço.") + " Comissão do empresário: 8% do valor." + (starter ? " Ele é titular lá — sai mais caro." : "") + "</p>";
+  } else if (st.tipo === "emprestimo") {
+    body = starter ? '<p class="muted">O clube não empresta titulares.</p>' : '<label class="nf"><span>Taxa de empréstimo <b id="cnValV">' + money(st.valor) + '</b></span><input type="range" min="0" max="' + VM.loanFee(p) * 2 + '" step="1000" value="' + st.valor + '" data-cn="valor"></label><p class="muted small">Ele joga por você até o fim da temporada e volta pro clube. Você paga 60% do salário (' + money(Math.round(p.salary * 0.6 / 1000) * 1000) + "/ano). Sem comissão.</p>";
+  } else {
+    var m = VM.aiMulta(p);
+    body = '<p>Multa rescisória: <b>' + money(m) + "</b> + comissão de " + money(Math.round(m * 0.08 / 1000) * 1000) + '.</p><p class="muted small">Pagando a multa, o clube não pode recusar. Só falta o jogador aceitar o salário.</p>';
+  }
+  var terms = st.tipo === "emprestimo" ? "" : '<h4 class="sec">Contrato com o jogador</h4><label class="nf"><span>Salário <b id="cnSalV">' + money(st.salario) + '/ano</b></span><input type="range" min="' + Math.round(pt * 0.7 / 1000) * 1000 + '" max="' + Math.round(pt * 1.5 / 1000) * 1000 + '" step="1000" value="' + st.salario + '" data-cn="salario"></label>' +
+    '<div class="nf"><span>Duração</span><div class="cchips">' + [1, 2, 3].map(function (a) { return '<button class="cchip ' + (st.anos === a ? "on" : "") + '" data-a="cnAnos" data-v="' + a + '">' + a + " temporada" + (a > 1 ? "s" : "") + "</button>"; }).join("") + "</div></div>";
+  var counter = n.contra ? '<div class="banner ok">Contraproposta do ' + esc(seller.tag) + ": <b>" + money(n.contra) + '</b> <button class="btn sm primary" data-a="cnAceitarContra" data-v="' + p.id + '">Aceitar</button></div>' : "";
+  return '<div class="neg"><dl class="kv"><dt>Clube</dt><dd>' + G.teamChip(seller.id, true) + "</dd><dt>Salário atual</dt><dd>" + money(p.salary) + "/ano</dd><dt>Contrato</dt><dd>" + p.contract + " temporada(s)</dd><dt>Rodadas</dt><dd>" + n.rodadas + "/3 nesta fase</dd></dl>" +
+    tabs + body + terms + counter +
+    '<div class="row"><button class="btn primary" data-a="cnEnviar" data-v="' + p.id + '" ' + (VM.marketOpen() ? "" : "disabled") + ">" + (st.tipo === "multa" ? "Pagar multa" : "Enviar proposta") + "</button>" + (VM.marketOpen() ? "" : '<span class="muted small">Janela fechada.</span>') + "</div>" +
+    (st.msg ? '<p class="talkres ' + (st.status || "") + '">' + esc(st.msg) + "</p>" : "") + "</div>";
+}
+ACT.cnTipo = function (v) { var p = VM.P(UI.cneg.pid); UI.cneg.tipo = v; UI.cneg.valor = v === "emprestimo" ? VM.loanFee(p) : Math.round(VM.askPrice(p) * 0.85 / 1000) * 1000; UI.cneg.msg = null; G.render(); };
+ACT.cnAnos = function (v) { UI.cneg.anos = +v; G.render(); };
+ACT.cnEnviar = function (v) {
+  var c = UI.cneg, r = VM.clubOffer(v, { tipo:c.tipo, valor:c.valor, salario:c.salario, anos:c.anos });
+  c.msg = r.msg; c.status = r.status; if (r.pede) c.salario = r.pede;
+  G.persist(); if (r.status === "aceita") { if (window.SFX) window.SFX.play("cash"); G.toast(r.msg); UI.cneg = null; G.go("elenco"); return; } G.render();
+};
+ACT.cnAceitarContra = function (v) {
+  var c = UI.cneg, r = VM.acceptCounter(v, c.salario, c.anos); c.msg = r.msg; c.status = r.status; if (r.pede) c.salario = r.pede;
+  G.persist(); if (r.status === "aceita") { G.toast(r.msg); UI.cneg = null; G.go("elenco"); return; } G.render();
+};
+document.getElementById("app").addEventListener("input", function (e) {
+  var el = e.target, k = el.getAttribute("data-cn"); if (!k || !UI.cneg) return;
+  UI.cneg[k] = +el.value;
+  var lab = document.getElementById(k === "valor" ? "cnValV" : "cnSalV"); if (lab) lab.textContent = money(+el.value) + (k === "salario" ? "/ano" : "");
+});
+function bidsView() {
+  var list = VM.S.propRecebidas || [];
+  if (!list.length) return '<p class="empty">NENHUMA PROPOSTA POR JOGADORES SEUS NESTA FASE</p>';
+  return list.map(function (o, i) {
+    var p = VM.P(o.pid), t = VM.T(o.team);
+    return '<div class="prop">' + G.face(p, "md") + "<div><strong>" + esc(p.nick) + ' <span class="muted">→</span> ' + esc(t.nome) + "</strong><small>Oferta: <b>" + money(o.valor) + "</b> · valor de mercado " + money(VM.valueFor(p)) + (p.pedidoSaida ? " · ele quer sair" : "") + '</small></div><div class="row"><button class="btn sm primary" data-a="bidAns" data-v="' + i + '" data-k="aceitar">Vender</button><button class="btn sm" data-a="bidAns" data-v="' + i + '" data-k="contra" ' + (o.rod ? "disabled" : "") + '>Pedir +20%</button><button class="btn sm ghost" data-a="bidAns" data-v="' + i + '" data-k="recusar">Recusar</button></div></div>';
+  }).join("");
+}
+ACT.bidAns = function (v, el) { var r = VM.answerBid(+v, el.getAttribute("data-k")); G.persist(); G.toast(r.msg, r.ok); };
+
+/* ---------------------------------------------------------------------
+   COLETIVA DE IMPRENSA (no relatório da série)
+   --------------------------------------------------------------------- */
+function pressBox(res) {
+  var key = res.a + res.b + ":" + VM.S.temporada + ":" + VM.S.fase + ":" + (VM.S.diaFase || 0), q = VM.pressQuestion(res);
+  var done = VM.S.pressFeita === key;
+  return '<div class="card press"><div class="k">Coletiva de imprensa</div><h3>“' + esc(q.q) + '”</h3>' +
+    (done ? '<p class="talkres">' + esc(UI.pressMsg || "Você já respondeu.") + "</p>" :
+      '<div class="talkopts">' + q.a.map(function (x) { return '<button class="topt" data-a="press" data-v="' + x[0] + '" data-k="' + esc(key) + '"><strong>“' + esc(x[1]) + '”</strong><small>' + esc(x[2]) + "</small></button>"; }).join("") + "</div>") +
+    '<p class="muted small">Torcida ' + Math.round(VM.S.torcida || 0) + "% · Hype " + Math.round(VM.S.hype || 0) + "%</p></div>";
+}
+ACT.press = function (v, el) { var r = VM.pressAnswer(el.getAttribute("data-k"), v); UI.pressMsg = r.msg; G.persist(); G.render(); };
+
+window.CARREIRA = { pressBox:pressBox, clubNeg:clubNeg, bidsView:bidsView, conversa:conversa, contrato:contrato, demitido:demitido, metaView:metaView, gauge:gauge, confColor:confColor };
 })();

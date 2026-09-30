@@ -27,6 +27,19 @@ O QUE TEM
   adversário, patches de agentes, rotação de mapas, aposentadorias, novos
   talentos e hall da fama.
 - Sons e música gerados pelo navegador (ligue/desligue em Configurações).
+- Formatos reais: Kickoff em tripla eliminação, Play-Ins de 12 times em dupla
+  eliminação e playoffs com os diretos na chave superior.
+- Economia por jogador: créditos, armas, drops e armas salvas; pontos de
+  ultimate (Auto, Guardar ou Usar agora durante a partida).
+- Cada mapa tem estrutura própria (teleportes na Bind, meio da Split, três
+  sites na Haven e na Lotus...) que favorece ou pune planos e setups.
+- Negociação com clubes (compra com contraproposta, empréstimo, multa
+  rescisória), propostas pelos seus jogadores e comissão de empresário.
+- 3 espaços de save, estatísticas avançadas (ADR, KAST, FK/FD, clutches) e
+  relatório round a round.
+- Aprender agentes novos no treino, funções táticas (IGL, entry, lurker,
+  âncora, suporte), coletivas de imprensa, torcida e hype, rede de olheiros,
+  dicas no jogo e partida ao vivo ajustada pro celular.
 
 ARQUIVOS
 - index.html          -> abre o jogo (só a estrutura da página)
@@ -51,6 +64,7 @@ ARQUIVOS
     carreira.js       -> diretoria, conversas, contrato, academia, hall da fama
     intro.js          -> menu inicial, criar manager, criar organização,
                          escolha de time, contrato
+- tests/              -> testes automáticos (node tests/rodar.js)
 - fotos/, escudos/    -> suas imagens opcionais (veja abaixo)
 
 Os estilos carregam na ordem que está no index.html; os de baixo sobrescrevem
@@ -71,6 +85,7 @@ AVISOS
 - Uso pessoal. Os atributos são gerados pelo jogo, não são oficiais.
 - Os mapas 2D são esquemáticos (sites e rotas), não as plantas reais.
 - Patrocinadores são marcas inventadas pelo jogo.
-- Kickoff (tripla eliminação no real) e Play-Ins do Stage 2 estão simplificados.
+- Formatos seguem o VCT 2026 (Kickoff em tripla eliminação, Play-Ins de 12
+  times). Ligas com menos de 12 times usam uma versão reduzida.
 - Projeto criado sob a política "Legal Jibber Jabber" da Riot Games. A Riot
   Games não endossa nem patrocina este projeto.

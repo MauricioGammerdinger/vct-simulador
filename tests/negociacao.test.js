@@ -1,0 +1,20 @@
+/* Negociação com clubes, save em espaços e funções táticas. */
+const VM = require("./_carregar")();
+const { check, resumo } = require("./_check");
+VM.newWorld(window.VALDB, 5);
+VM.setUserTeam("LOUD"); VM.S.manager = { nick: "teste", attrs: {} };
+const me = VM.T("LOUD");
+const alvo = Object.values(VM.S.teams).find(t => t.id !== "LOUD" && t.liga === me.liga);
+const pid = alvo.roster[0];
+me.cash = 1e8;
+const baixa = VM.clubOffer(pid, { tipo: "compra", valor: 1000, salario: VM.P(pid).salary, anos: 2 });
+check(baixa.status !== "aceita", "oferta de US$ 1 mil foi aceita");
+const multa = VM.clubOffer(pid, { tipo: "multa", valor: 0, salario: VM.P(pid).salary * 1.3, anos: 2 });
+check(multa.status === "aceita" || multa.status === "jogador", "pagar a multa não funcionou: " + multa.status + " " + multa.msg);
+if (multa.status === "aceita") check(VM.P(pid).teamId === "LOUD" && me.roster.indexOf(pid) >= 0, "jogador não entrou no elenco");
+const fn = VM.funcoes(me);
+check(Object.keys(VM.FUNCOES).every(k => k in fn), "funções táticas incompletas");
+VM.setSlot(2); VM.save && VM.save();
+check(VM.getSlot() === 2, "troca de espaço de save");
+check(!!VM.slotInfo(2), "espaço 2 sem informação depois de salvar");
+resumo("negociação, saves e funções");

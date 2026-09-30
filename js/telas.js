@@ -96,6 +96,7 @@ VIEWS.inicio = function () {
   var low = five.filter(function (p) { return p.morale < 50; });
   var cond = inj.length ? '<p class="cond bad">✚ Lesionados: ' + inj.map(function (p) { return esc(p.nick) + " (" + p.lesao.dias + " dias)"; }).join(", ") + "</p>" : "";
   cond += '<p class="cond ' + ((t.quimica == null ? 75 : t.quimica) < 60 ? "warn" : "ok") + '">Química do time: <b>' + Math.round(t.quimica == null ? 75 : t.quimica) + "%</b>" + ((t.quimica || 75) < 60 ? " — elenco ainda se entrosando" : "") + "</p>";
+  cond += '<p class="cond">Torcida <b>' + Math.round(s.torcida || 0) + '%</b> · Hype <b>' + Math.round(s.hype || 0) + "%</b>" + ((s.hype || 0) > 75 ? " — expectativa alta: derrota agora pesa mais na moral" : "") + "</p>";
   cond += tired.length ? '<p class="cond warn">! ' + tired.map(function (p) { return esc(p.nick); }).join(", ") + (tired.length > 1 ? " estão cansados." : " está cansado.") + "</p>"
     : low.length ? '<p class="cond warn">! Moral baixa: ' + low.map(function (p) { return esc(p.nick); }).join(", ") + ".</p>" : '<p class="cond ok">! Todos os jogadores estão em <b>boa condição</b>!</p>';
   var elenco = '<div class="hsec"><div class="k">Elenco</div><div class="circles">' + five.map(function (p) {
@@ -250,7 +251,7 @@ VIEWS.taticas = function () {
   var prev = G.tacticPreview ? G.tacticPreview(map, tac, side) : "";
   return tabs + mtabs + '<div class="tcreator"><div class="tcmap"><span class="cb tl"></span><span class="cb tr"></span><span class="cb bl"></span><span class="cb br"></span>' + prev + "</div>" + icons +
     '<div class="tcdet"><h2 class="esth">✎ ' + E[0] + ', <span>' + map.toUpperCase() + ", " + (side === "atk" ? "ATQ" : "DEF") + "</span></h2><p class=\"muted\">" + E[1] + "</p>" + detail +
-    '<div class="row"><button class="btn sm ghost" data-a="tacReset">Voltar ao padrão</button></div></div></div>';
+    (VM.MAP_TRAITS[map] ? '<p class="tip mapt"><b>Estrutura do mapa:</b> ' + esc(VM.MAP_TRAITS[map].txt) + "</p>" : "") + '<div class="row"><button class="btn sm ghost" data-a="tacReset">Voltar ao padrão</button></div></div></div>';
 };
 ACT.tacAba = function (v) { UI.tacAba = v; G.render(); };
 ACT.tacGo = function (v) { UI.tacAba = "criador"; UI.tacMap = v; G.render(); };
@@ -263,7 +264,8 @@ ACT.tacSel = function (v, el) { setPath(me().taticas[UI.tacMap], el.getAttribute
 VIEWS.transferencias = function () {
   var s = S(), t = me();
   UI.trAba = UI.trAba || "mundo";
-  var tabs = '<div class="ttabs">' + [["mundo", "Transferências mundiais"], ["minhas", "Do meu time"]].map(function (x) { return '<button data-a="trAba" data-v="' + x[0] + '" class="' + (UI.trAba === x[0] ? "on" : "") + '">' + x[1] + "</button>"; }).join("") + '<button data-a="nav" data-v="mercado">Ir pro mercado →</button></div>';
+  var tabs = '<div class="ttabs">' + [["mundo", "Transferências mundiais"], ["minhas", "Do meu time"], ["propostas", "Propostas recebidas (" + ((s.propRecebidas || []).length) + ")"]].map(function (x) { return '<button data-a="trAba" data-v="' + x[0] + '" class="' + (UI.trAba === x[0] ? "on" : "") + '">' + x[1] + "</button>"; }).join("") + '<button data-a="nav" data-v="mercado">Ir pro mercado →</button></div>';
+  if (UI.trAba === "propostas" && window.CARREIRA) return tabs + window.CARREIRA.bidsView();
   var list = (s.transfers || []).filter(function (x) { return UI.trAba === "mundo" || x.from === t.id || x.to === t.id; }).slice(0, 120);
   function side(id) { return id ? G.teamChip(id) : '<span class="muted">Sem clube</span>'; }
   var rows = list.map(function (x) {
@@ -331,6 +333,7 @@ VIEWS.patrocinadores = function () {
   return '<div class="spgrid"><div>' + tabs + (open ? "" : '<div class="banner">Os contratos só podem ser trocados com a janela aberta (começo de cada fase).</div>') + '<div class="splist">' + list + "</div></div>" +
     '<div class="spside">' + jersey(t, main, s1, s2) + sec("Contratos atuais") +
     '<dl class="kv"><dt>Peito</dt><dd>' + (main ? esc(main.nome) + " · " + money(main.pay) : "—") + "</dd><dt>Manga esquerda</dt><dd>" + (s1 ? esc(s1.nome) + " · " + money(Math.round(s1.pay * .35)) : "—") + "</dd><dt>Manga direita</dt><dd>" + (s2 ? esc(s2.nome) + " · " + money(Math.round(s2.pay * .35)) : "—") + "</dd><dt>Total por fase</dt><dd class=\"pos\">" + money(Math.round(total)) + "</dd></dl>" +
+    '<p class="muted small">Torcida em ' + Math.round(s.torcida || 0) + "%: os patrocínios pagam " + Math.round((0.9 + (s.torcida || 50) / 500) * 100) + '% do valor base. Vitórias e títulos aumentam a torcida.</p>' +
     '<p class="muted">Patrocinadores são marcas inventadas pelo jogo. Times maiores e com títulos atraem tiers melhores.</p></div></div>';
 };
 ACT.spTier = function (v) { UI.spTier = v; G.render(); };

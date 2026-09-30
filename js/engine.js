@@ -170,7 +170,7 @@ function newPlayer(o) {
     id:id, nick:o.nick, nat:o.nat || "??", role:o.role || "F", agents:o.agents || [],
     age:o.age, aim:o.aim, util:o.util, sense:o.sense, clutch:o.clutch, comms:o.comms,
     form:0, morale:70, contract:o.contract || ri(1, 3), teamId:o.teamId || null,
-    gerado:!!o.gerado, salary:0, stats:{ mapas:0, k:0, d:0, a:0, acsSum:0 }
+    gerado:!!o.gerado, salary:0, stats:{ mapas:0, k:0, d:0, a:0, acsSum:0, fk:0, fd:0, dmg:0, kast:0, rd:0, cl:0, mk:0 }
   };
   p.salary = salaryFor(ovr(p));
   genExtra(p);
@@ -257,6 +257,26 @@ function ensureTactics(team) {
 }
 
 /* Interação ataque × defesa: retorna termo (logit) a favor do ATAQUE. */
+/* Estrutura de cada mapa: termos a favor do ATAQUE por plano/setup. */
+var MAP_TRAITS = {
+  Ascent:  { txt:"Meio aberto e portas que fecham os sites. Quem controla o meio decide: jogo padrão rende, defesa agressiva no meio também.", atk:{ padrao:.04, rush:-.02 }, def:{ agressivo:-.03 } },
+  Bind:    { txt:"Sem meio, dois teleportes. Fakes e rotações rápidas do ataque punem a defesa; lurk rende pouco.", atk:{ fake:.07, rush:.03, lurk:-.04 }, def:{ stack:.02 } },
+  Haven:   { txt:"Três sites e o meio (Garagem). A defesa fica esticada: stack é arriscado e fakes funcionam.", atk:{ fake:.04, split:.03 }, def:{ stack:.05 } },
+  Split:   { txt:"Chokes apertados, cordas e o meio com ventilação. Rush sofre; lurk pelo meio e defesa que briga pelo meio rendem.", atk:{ lurk:.06, rush:-.05, exec:.02 }, def:{ agressivo:-.04, retake:.03 } },
+  Lotus:   { txt:"Três sites com portas giratórias e parede destrutível. Rotação lenta é punida; fake e execução rápida funcionam.", atk:{ fake:.05, exec:.03 }, def:{ stack:.04 }, rot:{ lenta:.04 } },
+  Sunset:  { txt:"Meio curto e disputado. Quem ganha o meio abre os dois sites.", atk:{ padrao:.04, split:.02 }, def:{ agressivo:-.03 } },
+  Abyss:   { txt:"Sem bordas: dá pra cair do mapa. Defesa agressiva se expõe; ataques rápidos e execuções rendem.", atk:{ rush:.03, exec:.03 }, def:{ agressivo:.04 }, op:1 },
+  Breeze:  { txt:"Mapa enorme e sites largos. Execução com utilitária é forte e retomar é difícil. Operator vale muito.", atk:{ exec:.05, rush:-.03 }, def:{ retake:.05, stack:-.02 }, op:1 },
+  Icebox:  { txt:"Muita verticalidade e cordas. Dividir o site funciona; plantar e segurar o pós-plant é forte.", atk:{ split:.05, exec:.02 }, def:{ retake:.03 }, op:1 },
+  Fracture:{ txt:"O ataque nasce dos dois lados. Dividir o site é o plano natural; stack fica exposto pelas costas.", atk:{ split:.07, lurk:.02 }, def:{ stack:.04, agressivo:-.02 } },
+  Pearl:   { txt:"Meio longo sem gimmicks. Jogo de mira e informação: padrão e lurk rendem, rush sofre.", atk:{ padrao:.03, lurk:.03, rush:-.03 }, def:{ retake:.02 }, op:1 },
+  Corrode: { txt:"Sites fechados com muitas entradas. Execução coordenada rende; defesa de retomada também.", atk:{ exec:.03, fake:.02 }, def:{ retake:-.03 } },
+  Summit:  { txt:"Rotações longas entre os sites. Fakes esticam a defesa.", atk:{ fake:.04 }, def:{ stack:.02 }, rot:{ lenta:.03 } }
+};
+function mapTerm(map, a, d) {
+  var m = MAP_TRAITS[map]; if (!m) return 0;
+  return ((m.atk || {})[a.plano] || 0) + ((m.def || {})[d.setup] || 0) + ((m.rot || {})[d.rotacao] || 0);
+}
 function tacticTerm(a, d) {
   var hitStack = d.setup === "stack" && d.site === a.site;
   var otherStack = d.setup === "stack" && d.site !== a.site;
@@ -409,6 +429,7 @@ function compAnalysis(team, comp) {
     if (p.agents.length) {
       if (p.agents.indexOf(a) < 0) { pen -= (p.role === "F" || p.role === role) ? 2.5 : 4.5; }
     } else if (!(p.role === "F" || p.role === role)) pen -= 2;
+    if (p.aprendendo && p.aprendendo.a === a && pen < 0) pen *= 1 - p.aprendendo.prog / 100;
     pen += metaBonus(a) * 0.6;
     perPlayer[p.id] = pen;
     if (pen <= -4) notes.push(p.nick + " fora da função (" + a + ")");
@@ -431,7 +452,8 @@ function teamEff(team, map, comp) {
     var sa = p.saude == null ? 100 : p.saude;
     return ovr(p) + p.form * 0.8 * (1.2 - (p.cons || 70) / 250) + (p.morale - 70) * 0.04 + an.perPlayer[p.id] - Math.max(0, 75 - sa) * 0.09 - (healthy(p) ? 0 : 6);
   })) / 5;
-  var lead = Math.max.apply(null, five.map(function (p) { return p.lead || 60; }));
+  var fu = funcoes(team), igl = fu.igl ? P(fu.igl) : null;
+  var lead = igl ? (igl.lead || 60) : Math.max.apply(null, five.map(function (p) { return p.lead || 60; })) - 6;
   var tw = sum(five.map(function (p) { return p.team || 65; })) / 5;
   var staffB = (staffLvl(team, "tecnico") - 3) * 0.35 + (staffLvl(team, "analista") - 2.5) * 0.2;
   var quim = ((team.quimica == null ? 75 : team.quimica) - 75) * 0.05;
@@ -462,8 +484,59 @@ function newMapSim(A, B, map, opts) {
     var pr = function (t) { return sum(activeFive(t).map(function (p) { return ((p.comp || 70) - 70) * 0.05 + ((p.clutch || 70) - 70) * 0.02; })) / 5; };
     s.effA += pr(A); s.effB += pr(B); s.pressao = true;
   }
-  activeFive(A).concat(activeFive(B)).forEach(function (p) { s.stats[p.id] = { k:0, d:0, a:0, fk:0, dmg:0 }; });
+  activeFive(A).concat(activeFive(B)).forEach(function (p) { s.stats[p.id] = { k:0, d:0, a:0, fk:0, fd:0, dmg:0, kast:0, rd:0, cl:0, mk:0 }; });
+  s.pe = {}; s.ultA = "auto"; s.ultB = "auto";
+  [["A", A, s.compA], ["B", B, s.compB]].forEach(function (x) { activeFive(x[1]).forEach(function (p) { s.pe[p.id] = { cr:800, ult:0, max:ultMax(x[2][p.id]), arma:null, salvo:false, t:x[0] }; }); });
   return s;
+}
+
+/* ---------------------------------------------------------------------
+   Economia por jogador e ultimates
+   --------------------------------------------------------------------- */
+var ULT_PTS = { Jett:8, Raze:8, Reyna:6, Phoenix:6, Neon:7, Yoru:8, Iso:7, Waylay:8, Sova:8, Breach:8, Skye:8, Fade:8, "KAY/O":8, Gekko:8, Tejo:8,
+  Omen:7, Brimstone:7, Viper:9, Astra:7, Harbor:7, Clove:8, Killjoy:9, Cypher:6, Sage:8, Chamber:8, Deadlock:7, Vyse:8, Veto:7 };
+function ultMax(agent) { return ULT_PTS[agent] || 7; }
+var ARMAS = { pistol:["Classic", "Ghost", "Sheriff", "Frenzy"], eco:["Classic", "Sheriff", "Stinger", "Shorty"], force:["Spectre", "Bulldog", "Marshal", "Spectre"], full:["Vandal", "Phantom", "Vandal", "Phantom"] };
+function pickArma(p, buy) {
+  if (buy === "full" && (p.role === "D" || p.role === "S") && (p.aim || 70) >= 82 && R() < 0.45) return "Operator";
+  return pick(ARMAS[buy]);
+}
+function teamCred(s, key) { var f = Object.keys(s.pe).filter(function (id) { return s.pe[id].t === key; }); return f.length ? Math.round(sum(f.map(function (id) { return s.pe[id].cr; })) / f.length) : 0; }
+/* compra de cada jogador: quem tem sobra dropa arma pro colega sem grana; quem sobreviveu mantém a arma */
+function buyPlayers(s, key, buy) {
+  var ids = Object.keys(s.pe).filter(function (id) { return s.pe[id].t === key; });
+  var cost = BUY[buy].cost, gun = buy === "full" ? 2900 : buy === "force" ? 1600 : 0, strs = [], drops = [];
+  ids.forEach(function (id) { var e = s.pe[id]; e.drop = null; e.meia = false;
+    var c = (e.salvo && gun && e.arma && ARMAS.pistol.indexOf(e.arma) < 0 && ARMAS.eco.indexOf(e.arma) < 0) ? cost - gun : cost;
+    if (e.cr >= c) { e.cr -= c; if (c === cost) e.arma = buy === "pistol" ? (R() < .5 ? "Classic" : pick(ARMAS.pistol)) : pickArma(P(id), buy); e.pago = true; }
+    else e.pago = false; });
+  ids.filter(function (id) { return !s.pe[id].pago; }).forEach(function (id) {
+    var e = s.pe[id], rich = ids.filter(function (j) { return j !== id && s.pe[j].cr >= gun + 400; }).sort(function (a, b) { return s.pe[b].cr - s.pe[a].cr; })[0];
+    if (gun && rich) { s.pe[rich].cr -= gun; var rest = Math.min(e.cr, cost - gun); e.cr -= rest; e.arma = pickArma(P(id), buy); e.drop = rich; drops.push([rich, id]); e.meia = rest < cost - gun; }
+    else { var gasto = Math.min(e.cr, Math.round(cost * 0.5)); e.cr -= gasto; e.arma = pick(ARMAS.eco); e.meia = true; }
+  });
+  var op = MAP_TRAITS[s.map] && MAP_TRAITS[s.map].op;
+  ids.forEach(function (id) { var e = s.pe[id]; strs.push((op && e.arma === "Operator" ? 1.07 : 1) * (e.meia ? (e.drop ? BUY[buy].str * 0.93 : Math.min(BUY[buy].str, BUY.force.str * 0.8)) : BUY[buy].str)); });
+  return { str:sum(strs) / Math.max(1, strs.length), drops:drops };
+}
+function ultPlan(s, key, buy, myScore, oppScore) {
+  var mode = key === "A" ? s.ultA : s.ultB;
+  var ready = Object.keys(s.pe).filter(function (id) { var e = s.pe[id]; return e.t === key && e.ult >= e.max; });
+  if (!ready.length || mode === "guardar") return [];
+  var big = oppScore >= 10 || myScore >= 11 || s.round === 11 || s.round === 23 || s.round >= 24;
+  if (mode === "usar") return ready.slice(0, 3);
+  if (buy === "eco") return big ? ready.slice(0, 1) : [];
+  var n = big ? 3 : (buy === "full" ? (R() < 0.6 ? 2 : 1) : 1);
+  return ready.slice(0, n);
+}
+function ecoAfter(s, key, won, lossStreak, ev, planted) {
+  var dead = {}; ev.kills.forEach(function (k) { dead[k.v] = 1; });
+  var kills = {}; ev.kills.forEach(function (k) { kills[k.k] = (kills[k.k] || 0) + 1; });
+  Object.keys(s.pe).forEach(function (id) { var e = s.pe[id]; if (e.t !== key) return;
+    e.cr = Math.min(9000, e.cr + (won ? 3000 : 1900 + 500 * Math.min(Math.max(0, lossStreak - 1), 2)) + 200 * (kills[id] || 0) + (planted ? 300 : 0));
+    e.salvo = !dead[id];
+    e.ult = Math.min(e.max, e.ult + (kills[id] || 0) + (dead[id] ? 1 : 0) + (R() < 0.06 ? 1 : 0) + (planted && R() < 0.2 ? 1 : 0));
+  });
 }
 
 function sideOf(s, who, rnd) {
@@ -572,18 +645,24 @@ function styleMatch(ea, ed, a, d) {
 function stepRound(s) {
   if (s.done) return null;
   var A = T(s.A), B = T(s.B), rnd = s.round;
-  if (rnd === 12) { s.credA = 800; s.credB = 800; s.lossA = 0; s.lossB = 0; }
-  if (rnd >= 24 && (rnd - 24) % 2 === 0) { s.credA = 5000; s.credB = 5000; }
+  if (!s.pe) { s.pe = {}; s.ultA = s.ultB = "auto"; [["A", A, s.compA], ["B", B, s.compB]].forEach(function (x) { activeFive(x[1]).forEach(function (p) { s.pe[p.id] = { cr:s["cred" + x[0]], ult:0, max:ultMax((x[2] || {})[p.id]), arma:null, salvo:false, t:x[0] }; }); }); }
+  if (rnd === 12) { s.lossA = 0; s.lossB = 0; Object.keys(s.pe).forEach(function (id) { var e = s.pe[id]; e.cr = 800; e.salvo = false; e.arma = null; }); }
+  if (rnd >= 24 && (rnd - 24) % 2 === 0) Object.keys(s.pe).forEach(function (id) { s.pe[id].cr = 5000; });
+  s.credA = teamCred(s, "A"); s.credB = teamCred(s, "B");
 
   var sideA = sideOf(s, "A", rnd), sideB = sideA === "atk" ? "def" : "atk";
   var buyA = decideBuy(s.credA, s.lossA, rnd, s.callA, s.sa, s.sb, s.credB);
   var buyB = decideBuy(s.credB, s.lossB, rnd, s.callB, s.sb, s.sa, s.credA);
   if (rnd >= 24) { buyA = "full"; buyB = "full"; }
+  var bpA = buyPlayers(s, "A", buyA), bpB = buyPlayers(s, "B", buyB);
+  var ultsA = ultPlan(s, "A", buyA, s.sa, s.sb), ultsB = ultPlan(s, "B", buyB, s.sb, s.sa);
+  ultsA.concat(ultsB).forEach(function (id) { s.pe[id].ult = 0; });
 
   var atkBias = MAP_ATK[s.map] || 0.49;
   var sideT = Math.log(atkBias / (1 - atkBias));
   var x = (s.effA - s.effB) * 0.028;
-  x += Math.log(BUY[buyA].str / BUY[buyB].str) * 1.6;
+  x += Math.log(bpA.str / bpB.str) * 1.6;
+  x += (ultsA.length - ultsB.length) * (0.055 + (s.map === "Breeze" || s.map === "Icebox" ? 0.01 : 0));
   x += sideA === "atk" ? sideT : -sideT;
   x += styleTerm(styleOf(s, "A", sideA), sideA, buyA) - styleTerm(styleOf(s, "B", sideB), sideB, buyB);
   x += 0.04 * Math.min(s.streakA, 4) - 0.04 * Math.min(s.streakB, 4);
@@ -594,7 +673,7 @@ function stepRound(s) {
   var atkWho = sideA === "atk" ? "A" : "B", defWho = atkWho === "A" ? "B" : "A";
   var aTac = resolveAtk(s, atkWho, atkWho === "A" ? buyA : buyB);
   var dTac = resolveDef(s, defWho, atkWho);
-  var tt = tacticTerm(aTac, dTac) + styleMatch(styleOf(s, atkWho, "atk"), styleOf(s, defWho, "def"), aTac, dTac);
+  var tt = tacticTerm(aTac, dTac) + mapTerm(s.map, aTac, dTac) + styleMatch(styleOf(s, atkWho, "atk"), styleOf(s, defWho, "def"), aTac, dTac) + funcTerm(s, atkWho, "atk", aTac, dTac) - funcTerm(s, defWho, "def", aTac, dTac);
   x += atkWho === "A" ? tt : -tt;
   (defWho === "A" ? (s.hdA = s.hdA || []) : (s.hdB = s.hdB || [])).push({ setup:dTac.setup, site:dTac.site });
   var pA = sigmoid(x);
@@ -602,23 +681,21 @@ function stepRound(s) {
   (atkWho === "A" ? s.histA : s.histB).push({ site:aTac.site, plano:aTac.plano, stacked:dTac.setup === "stack" && dTac.site === aTac.site,
     won:(atkWho === "A") === aWins });
 
-  s.credA = Math.max(0, s.credA - BUY[buyA].cost);
-  s.credB = Math.max(0, s.credB - BUY[buyB].cost);
-  if (aWins) {
-    s.sa++; s.streakA++; s.streakB = 0; s.lossB++; s.lossA = 0;
-    s.credA = Math.min(9000, s.credA + 3000);
-    s.credB = Math.min(9000, s.credB + 1900 + 500 * Math.min(s.lossB - 1, 2));
-  } else {
-    s.sb++; s.streakB++; s.streakA = 0; s.lossA++; s.lossB = 0;
-    s.credB = Math.min(9000, s.credB + 3000);
-    s.credA = Math.min(9000, s.credA + 1900 + 500 * Math.min(s.lossA - 1, 2));
-  }
+  if (aWins) { s.sa++; s.streakA++; s.streakB = 0; s.lossB++; s.lossA = 0; }
+  else { s.sb++; s.streakB++; s.streakA = 0; s.lossA++; s.lossB = 0; }
 
   var winTeam = aWins ? A : B, loseTeam = aWins ? B : A;
   var winSide = aWins ? sideA : sideB;
   var ev = narrate(s, winTeam, loseTeam, winSide, aWins ? buyA : buyB, aWins ? buyB : buyA, aTac.site, aWins ? "A" : "B");
+  var plantou = !!(ev.ev.plant), atkKey = atkWho;
+  ecoAfter(s, "A", aWins, s.lossA, ev.ev, plantou && atkKey === "A");
+  ecoAfter(s, "B", !aWins, s.lossB, ev.ev, plantou && atkKey === "B");
+  s.credA = teamCred(s, "A"); s.credB = teamCred(s, "B");
+  var nomes = function (l) { return l.map(function (id) { return P(id).nick; }); };
+  if (ultsA.length || ultsB.length) ev.txt += " · ults: " + (ultsA.length ? A.tag + " " + ultsA.length : "") + (ultsA.length && ultsB.length ? ", " : "") + (ultsB.length ? B.tag + " " + ultsB.length : "");
   var r = { n:rnd + 1, w:aWins ? "A" : "B", sideA:sideA, buyA:buyA, buyB:buyB, pA:pA, txt:ev.txt, tipo:ev.tipo, ev:ev.ev,
-    atk:aTac, def:dTac, credA:s.credA, credB:s.credB,
+    atk:aTac, def:dTac, credA:s.credA, credB:s.credB, ultsA:ultsA, ultsB:ultsB, dropsA:bpA.drops.length, dropsB:bpB.drops.length,
+    pe:clonePe(s.pe),
     upset: (BUY[aWins ? buyA : buyB].str / BUY[aWins ? buyB : buyA].str) < 0.6 };
   s.rounds.push(r);
   s.round++;
@@ -631,6 +708,7 @@ function stepRound(s) {
   return r;
 }
 
+function clonePe(pe) { var o = {}; Object.keys(pe).forEach(function (id) { var e = pe[id]; o[id] = { cr:e.cr, ult:e.ult, max:e.max, arma:e.arma, drop:e.drop }; }); return o; }
 var KILL_W = { D:1.45, F:1.1, S:0.9, I:0.9, C:0.8 };
 function weightedPick(players) {
   var ws = players.map(function (p) { return Math.max(1, (p.aim - 40)) * (KILL_W[p.role] || 1); });
@@ -651,7 +729,7 @@ function narrate(s, W, L, winSide, wBuy, lBuy, site, wKey) {
   /* sequência de abates: o time vencedor nunca zera; em eliminação a última morte é do perdedor */
   var seq = shuffle(Array(wk).fill("W").concat(Array(lk).fill("L")));
   if (tipo === "elim" || tipo === "defuse") { var li = seq.lastIndexOf("W"); seq.splice(li, 1); seq.push("W"); }
-  var aliveW = wp.slice(), aliveL = lp.slice(), kills = [], minW = 5, clutchVs = 0;
+  var aliveW = wp.slice(), aliveL = lp.slice(), kills = [], minW = 5, clutchVs = 0, clutcher = null, kastSet = {};
   var times = seq.map(function () { return 0.22 + R() * 0.66; }).sort();
   seq.forEach(function (x, i) {
     var killers = x === "W" ? aliveW : aliveL, victims = x === "W" ? aliveL : aliveW;
@@ -660,12 +738,17 @@ function narrate(s, W, L, winSide, wBuy, lBuy, site, wKey) {
     victims.splice(victims.indexOf(v), 1);
     kills.push({ t:times[i], k:k.id, v:v.id, kt:x === "W" ? wKey : lKey });
     s.stats[k.id].k++; s.stats[k.id].dmg += 150; s.stats[v.id].d++;
-    if (aliveW.length === 1 && minW > 1) clutchVs = aliveL.length;
+    kastSet[k.id] = 1;
+    if (aliveW.length === 1 && minW > 1) { clutchVs = aliveL.length; clutcher = aliveW[0]; }
     minW = Math.min(minW, aliveW.length);
   });
-  wp.forEach(function (p) { if (R() < .35) s.stats[p.id].a++; s.stats[p.id].dmg += ri(20, 90); });
-  lp.forEach(function (p) { if (R() < .2) s.stats[p.id].a++; s.stats[p.id].dmg += ri(10, 60); });
-  if (kills.length) s.stats[kills[0].k].fk++;
+  wp.forEach(function (p) { if (R() < .35) { s.stats[p.id].a++; kastSet[p.id] = 1; } s.stats[p.id].dmg += ri(20, 90); });
+  lp.forEach(function (p) { if (R() < .2) { s.stats[p.id].a++; kastSet[p.id] = 1; } s.stats[p.id].dmg += ri(10, 60); });
+  aliveW.concat(aliveL).forEach(function (p) { kastSet[p.id] = 1; });
+  wp.concat(lp).forEach(function (p) { var st = s.stats[p.id]; st.rd++; if (kastSet[p.id]) st.kast++; });
+  if (kills.length) { s.stats[kills[0].k].fk++; s.stats[kills[0].v].fd++; }
+  if (clutcher && clutchVs >= 1) s.stats[clutcher.id].cl++;
+  var kc = {}; kills.forEach(function (k) { kc[k.k] = (kc[k.k] || 0) + 1; }); Object.keys(kc).forEach(function (id) { if (kc[id] >= 3) s.stats[id].mk++; });
 
   var planted = tipo === "spike" || tipo === "defuse" || (winSide === "def" && tipo === "elim" && R() < .35);
   var plantT = planted ? 0.45 + R() * 0.15 : null;
@@ -778,7 +861,7 @@ function simSeries(aId, bId, bo) {
 
 function mapSummary(s) {
   return { map:s.map, sa:s.sa, sb:s.sb, winner:s.winner, rounds:s.rounds.map(function (r) {
-      return { w:r.w, buyA:r.buyA, buyB:r.buyB, upset:r.upset, sideA:r.sideA };
+      return { w:r.w, buyA:r.buyA, buyB:r.buyB, upset:r.upset, sideA:r.sideA, txt:r.txt, tipo:r.tipo, plano:r.atk && r.atk.plano, site:r.atk && r.atk.site, setup:r.def && r.def.setup, ua:(r.ultsA || []).length, ub:(r.ultsB || []).length };
     }), stats:s.stats };
 }
 
@@ -790,13 +873,14 @@ function seriesResult(aId, bId, bo, maps, wa, wb, vetoLog) {
 
 function applySeriesEffects(res) {
   eloUpdate(res);
+  if (S.userTeam && (res.a === S.userTeam || res.b === S.userTeam)) fansAfterSeries(res.winner === S.userTeam);
   if (S.userTeam && (res.a === S.userTeam || res.b === S.userTeam)) boardDelta(res.winner === S.userTeam ? 0.8 : -2 * dif().board, (res.winner === S.userTeam ? "Vitória" : "Derrota") + " contra " + T(res.winner === S.userTeam ? res.loser : res.winner).tag);
   [res.a, res.b].forEach(function (tid) {
     var won = res.winner === tid;
     var psi = staffLvl(T(tid), "psicologo");
     activeFive(T(tid)).forEach(function (p) {
       p.form = clamp(p.form + (won ? 0.6 : -0.6), -3, 3);
-      var mo = tid === S.userTeam ? (mgr("motivacao") - 10) * 0.15 : 0;
+      var mo = tid === S.userTeam ? (mgr("motivacao") - 10) * 0.15 - (!won && S.hype > 60 ? (S.hype - 60) * 0.08 : 0) : 0;
       p.morale = clamp(p.morale + (won ? 3 + mo : -3 + psi * 0.4 + mo), 30 + psi * 3, 99);
       p.saude = clamp((p.saude == null ? 100 : p.saude) - res.maps.length * ri(3, 6) * (1.25 - (p.stam || 70) / 250) * (tid === S.userTeam ? dif().fad : 1), 35, 100);
       var ich = 0.012 * (tid === S.userTeam ? dif().inj : 1) * (p.saude < 60 ? 3 : 1);
@@ -816,6 +900,7 @@ function applySeriesEffects(res) {
       var p = P(pid); if (!p) return;
       var st = m.stats[pid], rounds = m.sa + m.sb;
       p.stats.mapas++; p.stats.k += st.k; p.stats.d += st.d; p.stats.a += st.a;
+      ["fk", "fd", "dmg", "kast", "rd", "cl", "mk"].forEach(function (f) { p.stats[f] = (p.stats[f] || 0) + (st[f] || 0); });
       p.stats.acsSum += Math.round((st.dmg + st.k * 50 + st.fk * 30) / Math.max(1, rounds));
     });
   });
@@ -871,7 +956,49 @@ function standings(g) {
 }
 
 /* Chaves: nós com origem { s:seedIndex } | { w:nodeId } | { l:nodeId } */
+function N(id, a, b, d, nome, o) { var n = { id:id, a:a, b:b, d:d, nome:nome }; if (o) Object.keys(o).forEach(function (k) { n[k] = o[k]; }); return n; }
+function S_(i) { return { s:i }; } function W_(x) { return { w:x }; } function L_(x) { return { l:x }; }
 var TEMPLATES = {
+  /* Kickoff 2026: tripla eliminação, 12 times, seeds 1–4 com bye; cada chave tem sua final Bo5 */
+  TE12: [
+    N("U1a", S_(4), S_(11), 0, "Superior R1"), N("U1b", S_(5), S_(10), 0, "Superior R1"), N("U1c", S_(6), S_(9), 0, "Superior R1"), N("U1d", S_(7), S_(8), 0, "Superior R1"),
+    N("U2a", S_(0), W_("U1d"), 1, "Superior R2"), N("U2b", S_(1), W_("U1c"), 1, "Superior R2"), N("U2c", S_(2), W_("U1b"), 1, "Superior R2"), N("U2d", S_(3), W_("U1a"), 1, "Superior R2"),
+    N("MA", L_("U1a"), L_("U1b"), 1, "Meio R1"), N("MB", L_("U1c"), L_("U1d"), 1, "Meio R1"),
+    N("U3a", W_("U2a"), W_("U2d"), 2, "Semi superior"), N("U3b", W_("U2b"), W_("U2c"), 2, "Semi superior"),
+    N("MC", W_("MA"), L_("U2a"), 2, "Meio R2"), N("MD", W_("MB"), L_("U2b"), 2, "Meio R2"), N("ME", L_("U2c"), L_("U2d"), 2, "Meio R2"),
+    N("LA", L_("MA"), L_("MB"), 2, "Inferior R1", { elim:[11] }),
+    N("MF", W_("MC"), L_("U3a"), 3, "Meio R3"), N("MG", W_("MD"), L_("U3b"), 3, "Meio R3"),
+    N("LB", W_("LA"), L_("MC"), 3, "Inferior R2", { elim:[9] }), N("LC", L_("MD"), L_("ME"), 3, "Inferior R2", { elim:[9] }),
+    N("MH", W_("MF"), W_("ME"), 4, "Meio R4"),
+    N("LD", W_("LB"), L_("MF"), 4, "Inferior R3", { elim:[7] }), N("LE", W_("LC"), L_("MG"), 4, "Inferior R3", { elim:[7] }),
+    N("UF", W_("U3a"), W_("U3b"), 5, "Final superior", { bo5:true, winPlace:1 }),
+    N("MQ", W_("MH"), W_("MG"), 5, "Classificatória do meio"),
+    N("LF", W_("LD"), L_("MH"), 5, "Inferior R4", { elim:[7] }),
+    N("LG", W_("LF"), W_("LE"), 6, "Inferior R5", { elim:[6] }),
+    N("MFIN", W_("MQ"), L_("UF"), 6, "Final do meio", { bo5:true, winPlace:2 }),
+    N("LH", W_("LG"), L_("MQ"), 7, "Classificatória inferior", { elim:[5] }),
+    N("LFIN", W_("LH"), L_("MFIN"), 8, "Final inferior", { bo5:true, winPlace:3, elim:[4] })
+  ],
+  /* Play-Ins do Stage 2: 12 times em dupla eliminação; 3º/4º dos grupos com bye; 4 vagas nos playoffs */
+  PI12: [
+    N("P1a", S_(4), S_(11), 0, "Superior R1"), N("P1b", S_(5), S_(10), 0, "Superior R1"), N("P1c", S_(6), S_(9), 0, "Superior R1"), N("P1d", S_(7), S_(8), 0, "Superior R1"),
+    N("P2a", S_(0), W_("P1d"), 1, "Superior R2"), N("P2b", S_(1), W_("P1c"), 1, "Superior R2"), N("P2c", S_(2), W_("P1b"), 1, "Superior R2"), N("P2d", S_(3), W_("P1a"), 1, "Superior R2"),
+    N("L1a", L_("P1a"), L_("P1b"), 1, "Inferior R1", { elim:[11] }), N("L1b", L_("P1c"), L_("P1d"), 1, "Inferior R1", { elim:[11] }),
+    N("P3a", W_("P2a"), W_("P2d"), 2, "Vaga (superior)", { winPlace:1 }), N("P3b", W_("P2b"), W_("P2c"), 2, "Vaga (superior)", { winPlace:1 }),
+    N("L2a", W_("L1a"), L_("P2a"), 2, "Inferior R2", { elim:[8] }), N("L2b", W_("L1b"), L_("P2b"), 2, "Inferior R2", { elim:[8] }), N("L2c", L_("P2c"), L_("P2d"), 2, "Inferior R2", { elim:[8] }),
+    N("L3a", W_("L2a"), W_("L2b"), 3, "Inferior R3", { elim:[7] }),
+    N("LQ1", W_("L3a"), L_("P3a"), 4, "Vaga (inferior)", { winPlace:1, elim:[5] }), N("LQ2", W_("L2c"), L_("P3b"), 4, "Vaga (inferior)", { winPlace:1, elim:[5] })
+  ],
+  /* Playoffs do Stage 2: 4 diretos na chave superior, 4 dos Play-Ins na inferior */
+  DE8P: [
+    N("U1", S_(0), S_(3), 0, "Semi superior"), N("U2", S_(1), S_(2), 0, "Semi superior"),
+    N("L1a", S_(4), S_(7), 0, "Inferior R1", { elim:[7] }), N("L1b", S_(5), S_(6), 0, "Inferior R1", { elim:[7] }),
+    N("UF", W_("U1"), W_("U2"), 1, "Final superior"),
+    N("L2a", W_("L1a"), L_("U2"), 1, "Inferior R2", { elim:[5] }), N("L2b", W_("L1b"), L_("U1"), 1, "Inferior R2", { elim:[5] }),
+    N("L3", W_("L2a"), W_("L2b"), 2, "Inferior R3", { elim:[4] }),
+    N("LF", W_("L3"), L_("UF"), 3, "Final inferior", { elim:[3], bo5:true }),
+    N("GF", W_("UF"), W_("LF"), 4, "Grande final", { elim:[2], final:true, bo5:true })
+  ],
   DE8: [
     { id:"UQ1", a:{s:0}, b:{s:7}, d:0, nome:"Quartas (superior)" },
     { id:"UQ2", a:{s:3}, b:{s:4}, d:0, nome:"Quartas (superior)" },
@@ -981,6 +1108,7 @@ function stageRecord(st, m, res) {
     var def = TEMPLATES[st.template].filter(function (n) { return n.id === m.key; })[0];
     if (def.elim) st.place[res.loser] = def.elim[0];
     if (def.final) st.place[res.winner] = 1;
+    if (def.winPlace) st.place[res.winner] = def.winPlace;
   } else if (st.kind === "swiss") {
     st.rec[res.winner].w++; st.rec[res.loser].l++;
     st.rec[res.a].opp.push(res.b); st.rec[res.b].opp.push(res.a);
@@ -1061,7 +1189,9 @@ function buildPhase(idx) {
     LIGAS_VCT.forEach(function (lg) {
       var ev = newEvent({ id:"KO-" + lg, nome:"Kickoff — " + S.ligasNome[lg], tipo:"KICKOFF", liga:lg,
         plano:"KICKOFF", cpTab:CP.KICKOFF, premio:PRIZE.KICKOFF });
-      ev.stages.push(newGroups(snakeGroups(byStrength(leagueTeams(lg)), 2), 3));
+      var kt = byStrength(leagueTeams(lg));
+      if (kt.length === 12) ev.stages.push(newBracket("TE12", kt, 3, "Tripla eliminação"));
+      else { ev.plano = "KICKOFF_G"; ev.stages.push(newGroups(snakeGroups(kt, 2), 3)); }
       S.eventos.push(ev);
     });
   }
@@ -1101,11 +1231,13 @@ function buildPhase(idx) {
     LIGAS_VCT.forEach(function (lg) {
       var s2 = S.stage2 && S.stage2[lg];
       var third = s2.pot3, low = s2.pot5, chal = challengersFor(lg);
-      /* 4 grupos de 3: um de cada pote */
-      var pa = shuffle(third), pb = shuffle(low), pc = shuffle(chal);
-      var groups = [0, 1, 2, 3].map(function (i) { return [pa[i], pb[i], pc[i]]; });
+      if (chal.length < 4) {
+        var srcL = { AMER:["CNA", "CBR", "CLAT"], EMEA:["CEMEA"], PAC:["CPAC"], CN:["CCN"] }[lg] || [];
+        var extra = byStrength([].concat.apply([], srcL.map(leagueTeams)).filter(function (id) { return chal.indexOf(id) < 0; }));
+        chal = chal.concat(extra).slice(0, 4);
+      }
       var ev = newEvent({ id:"PI-" + lg, nome:"Play-Ins — " + S.ligasNome[lg], tipo:"PLAYINS", liga:lg, plano:"PLAYINS" });
-      ev.stages.push(newGroups(groups, 3, "Play-Ins (grupos de 3)"));
+      ev.stages.push(newBracket("PI12", third.concat(low).concat(byStrength(chal)), 3, "Play-Ins (dupla eliminação)"));
       S.eventos.push(ev);
     });
   }
@@ -1115,7 +1247,7 @@ function buildPhase(idx) {
       var seeds = s2.top4.concat(s2.playin);
       var ev = newEvent({ id:"S2P-" + lg, nome:"Stage 2 — " + S.ligasNome[lg] + " (playoffs)", tipo:"STAGE", liga:lg,
         plano:"STAGE2P", cpTab:CP.STAGE2, premio:PRIZE.STAGE });
-      ev.stages.push(newBracket("DE8", seeds, 3));
+      ev.stages.push(newBracket("DE8P", seeds, 3, "Playoffs"));
       S.eventos.push(ev);
     });
   }
@@ -1211,7 +1343,7 @@ function advanceEvent(ev) {
   var st = ev.stages[ev.si];
   var plano = ev.plano;
 
-  if (plano === "KICKOFF" && ev.si === 0) {
+  if (plano === "KICKOFF_G" && ev.si === 0) {
     var g = groupRanks(st);
     ev.stages.push(newBracket("DE4", [g[0][0], g[1][0], g[1][1], g[0][1]], 3, "Final four"));
     g.forEach(function (rank) { rank.slice(2).forEach(function (id, i) { ev.colocacao[id] = 5 + i * 2; }); });
@@ -1243,9 +1375,14 @@ function advanceEvent(ev) {
     ev.done = true; return;
   }
   if (plano === "PLAYINS") {
-    var g3 = groupRanks(st);
-    S.stage2[ev.liga].playin = g3.map(function (r) { return r[0]; });
-    g3.forEach(function (r) { r.slice(1).forEach(function (id) { ev.colocacao[id] = 9; }); });
+    var nd = st.nodes, q = [nd.P3a.res.winner, nd.P3b.res.winner, nd.LQ1.res.winner, nd.LQ2.res.winner];
+    S.stage2[ev.liga].playin = q;
+    Object.keys(st.place).forEach(function (id) { if (q.indexOf(id) < 0) ev.colocacao[id] = st.place[id]; });
+    q.forEach(function (id, i) { ev.colocacao[id] = i + 1; });
+    if (S.userTeam && ev.colocacao[S.userTeam]) {
+      boardEvent(ev);
+      news(q.indexOf(S.userTeam) >= 0 ? "Vocês passaram pelos Play-Ins e estão nos playoffs do Stage 2!" : "Vocês caíram nos Play-Ins.", q.indexOf(S.userTeam) >= 0 ? "bom" : "ruim");
+    }
     ev.done = true; return;
   }
   if (plano === "MASTERS" && ev.si === 0) {
@@ -1290,6 +1427,7 @@ function finalizeEvent(ev) {
       vice:ranking.filter(function (id) { return ev.colocacao[id] === 2; })[0] });
     if (champ === S.userTeam) S.conquistas.push(S.temporada + " — " + ev.nome);
     activeFive(T(champ)).forEach(function (p) { p.titulos = (p.titulos || 0) + 1; });
+    if (champ === S.userTeam) { S.torcida = clamp((S.torcida || 50) + 8, 0, 100); S.hype = clamp((S.hype || 50) + 10, 0, 100); }
   }
   var top3 = ranking.filter(function (id) { return ev.colocacao[id] <= 3; })
     .sort(function (a, b) { return ev.colocacao[a] - ev.colocacao[b]; });
@@ -1391,9 +1529,9 @@ function nextPhase() {
   }
   chargePayroll();
   boardPhaseEnd();
-  squadMood(); youthTick(); clauseRaids();
+  squadMood(); youthTick(); clauseRaids(); scoutNetworkTick(); S.negClubes = {};
   buildPhase(S.fase + 1);
-  aiMarket(ri(3, 7));
+  aiMarket(ri(3, 7)); incomingBids();
   if (R() < 0.5) newPatch();
   news("Começa: " + FASES[S.fase].nome + ".", "info");
 }
@@ -1437,6 +1575,7 @@ function trainingTick() {
     p.morale = clamp(p.morale - 0.3, 30, 99);
     p.salaryNext = salaryFor(ovr(p));
   });
+  learnTick();
   var g = mapGain(u);
   S.mapas.forEach(function (m) {
     var on = (S.treinoMapas || []).indexOf(m) >= 0;
@@ -1459,6 +1598,7 @@ function offseason() {
   hofSeason();
   news("Fim da temporada " + S.temporada + ". Janela de transferências aberta.", "titulo");
   boardPhaseEnd();
+  returnLoans();
   Object.keys(S.players).forEach(function (id) {
     var p = S.players[id];
     if (p.aposentado) return;
@@ -1493,7 +1633,7 @@ function offseason() {
 function newSeason() {
   S.temporada++; S.sf = {};
   Object.keys(S.cp).forEach(function (id) { S.cp[id] = 0; });
-  Object.keys(S.players).forEach(function (id) { S.players[id].stats = { mapas:0, k:0, d:0, a:0, acsSum:0 }; });
+  Object.keys(S.players).forEach(function (id) { S.players[id].stats = { mapas:0, k:0, d:0, a:0, acsSum:0, fk:0, fd:0, dmg:0, kast:0, rd:0, cl:0, mk:0 }; });
   buildPhase(0);
   news("Temporada " + S.temporada + " começou. Kickoff em todas as ligas.", "titulo");
 }
@@ -1668,11 +1808,12 @@ function migrate() {
   S.hof = S.hof || { temporadas:[], lendas:[] };
   S.mapas.forEach(function (m) { ensureMap(m); });
   if (!S.dif) S.dif = "normal";
+  if (S.userTeam && S.torcida == null) fansInit(T(S.userTeam));
   S.versao = 6;
 }
 function setLineupChem() { var t = userTeam(); if (t) t.quimica = clamp((t.quimica == null ? 72 : t.quimica) - 3, 30, 95); }
 function initQG() { var l = qgLevels(T(S.userTeam)); S.qg = {}; Object.keys(QG_ITEMS).forEach(function (k) { S.qg[k] = l[k]; }); }
-function setUserTeam(id) { S.userTeam = id; T(id).quimica = 66; S.qg = null; initQG(); autoSponsors(T(id)); if (!S.board) boardInit(); if (!S.academia || !S.academia.length) { S.academiaNivel = S.academiaNivel || 1; genYouth(3); } }
+function setUserTeam(id) { fansInit(T(id)); S.userTeam = null; T(id).funcoes = funcoes(T(id)); S.userTeam = id; T(id).quimica = 66; S.qg = null; initQG(); autoSponsors(T(id)); if (!S.board) boardInit(); if (!S.academia || !S.academia.length) { S.academiaNivel = S.academiaNivel || 1; genYouth(3); } }
 
 /* ---------------------------------------------------------------------
    Clube: livro-caixa, transferências, QG, patrocínio, ranking
@@ -1749,7 +1890,7 @@ function sponsorReq(tier, t) {
 function sponsorIncome(t) {
   if (t.id === S.userTeam && S.patrocinio) {
     var p = sponsorById(S.patrocinio.principal), s1 = sponsorById(S.patrocinio.sec[0]), s2 = sponsorById(S.patrocinio.sec[1]);
-    return (p ? p.pay : 0) + (s1 ? s1.pay * 0.35 : 0) + (s2 ? s2.pay * 0.35 : 0);
+    return ((p ? p.pay : 0) + (s1 ? s1.pay * 0.35 : 0) + (s2 ? s2.pay * 0.35 : 0)) * (0.9 + (S.torcida == null ? 50 : S.torcida) / 500);
   }
   var vct = !isChal(t.liga);
   return vct ? [0, 30000, 45000, 60000, 75000, 90000][t.nivel || 2] : [0, 6000, 10000, 15000, 20000, 26000][t.nivel || 2];
@@ -2181,6 +2322,248 @@ function createOrg(o) {
   S.customOrg = { id:t.id, tag:tagUp, c1:o.c1, c2:o.c2, hue:o.hue, shape:o.shape, substituiu:antigo };
   return { ok:true, id:t.id, msg:o.nome + " foi fundada e entra no lugar da " + antigo + "." };
 }
+/* ---------------------------------------------------------------------
+   Negociação com clubes: compra com contraproposta, empréstimo, multa,
+   comissão de empresário e propostas recebidas
+   --------------------------------------------------------------------- */
+function r1k(v) { return Math.round(v / 1000) * 1000; }
+function aiMulta(p) { if (p.multa == null) p.multa = r1k(valueFor(p) * (2 + (hashStr(p.id) % 200) / 100)); return p.multa; }
+function isStarter(p) { var t = p.teamId ? T(p.teamId) : null; return !!t && activeFive(t).indexOf(p) >= 0; }
+function askPrice(p) { var b = valueFor(p) * dif().price * (1 - (mgr("negociacao") - 10) * 0.012); if (isStarter(p)) b *= 1.15; return r1k(b); }
+function personalTerms(p, buyer) {
+  var seller = p.teamId ? T(p.teamId) : null, s = salaryFor(ovr(p)) * dif().salary;
+  if (seller && (buyer.nivel || 2) < (seller.nivel || 2)) s *= 1.15;
+  if (seller && isChal(buyer.liga) && !isChal(seller.liga)) s *= 1.25;
+  return r1k(Math.max(s, p.salary));
+}
+function negState(pid) {
+  S.negClubes = S.negClubes || {};
+  var k = S.temporada + ":" + S.fase, n = S.negClubes[pid];
+  if (!n || n.k !== k) n = S.negClubes[pid] = { k:k, rodadas:0, contra:null, tipo:null };
+  return n;
+}
+function loanFee(p) { return r1k(valueFor(p) * 0.12); }
+function doTransfer(p, seller, buyer, valor, salario, anos, tipo) {
+  var com = tipo === "emprestimo" ? 0 : r1k(valor * 0.08);
+  buyer.cash -= valor + com; seller.cash += valor;
+  ledger(buyer.id, tipo === "emprestimo" ? "Empréstimo" : tipo === "multa" ? "Multa rescisória" : "Transferência", -valor, (tipo === "emprestimo" ? "Empréstimo de " : "Compra de ") + p.nick + " (" + seller.tag + ")");
+  if (com) ledger(buyer.id, "Comissão", -com, "Comissão do empresário de " + p.nick);
+  seller.roster = seller.roster.filter(function (id) { return id !== p.id; }); if (seller.lineup) seller.lineup = null;
+  p.teamId = buyer.id; p.salary = salario; p.contract = tipo === "emprestimo" ? 1 : anos; p.multa = null; p.pedidoSaida = false;
+  if (tipo === "emprestimo") p.emprestimo = { de:seller.id, temp:S.temporada };
+  buyer.roster.push(p.id);
+  buyer.quimica = clamp((buyer.quimica == null ? 72 : buyer.quimica) - 10, 30, 95);
+  while (seller.roster.length < 5) aiSignFreeAgent(seller);
+  tlog(p, seller.id, buyer.id, valor, tipo === "emprestimo" ? "Empréstimo" : tipo === "multa" ? "Multa rescisória" : "Transferência");
+  news((tipo === "emprestimo" ? "Empréstimo fechado: " : "Contratação: ") + p.nick + " chega da " + seller.nome + (valor ? " por " + money(valor) : "") + (com ? " (+ " + money(com) + " de comissão)" : "") + ".", "bom");
+}
+function clubOffer(pid, o) {
+  var p = P(pid), buyer = T(S.userTeam), seller = p.teamId ? T(p.teamId) : null;
+  if (!seller || seller.id === buyer.id) return { status:"erro", msg:"Esse jogador não está em outro clube." };
+  if (!marketOpen()) return { status:"erro", msg:"A janela está fechada. Ela abre no início de cada fase." };
+  if (buyer.roster.length >= 7) return { status:"erro", msg:"Elenco cheio (máximo de 7). Libere alguém antes." };
+  var n = negState(pid);
+  if (o.tipo === "emprestimo") {
+    if (isStarter(p)) return { status:"recusa", msg:seller.nome + " não empresta titulares." };
+    var fee = loanFee(p);
+    if (o.valor > buyer.cash) return { status:"erro", msg:"Caixa insuficiente." };
+    if (o.valor < fee) { n.rodadas++; n.contra = fee; n.tipo = "emprestimo"; return { status:"contra", contra:fee, msg:seller.nome + " topa emprestar por " + money(fee) + " (você paga 60% do salário)." }; }
+    doTransfer(p, seller, buyer, o.valor, r1k(p.salary * 0.6), 1, "emprestimo");
+    return { status:"aceita", msg:p.nick + " chegou emprestado até o fim da temporada." };
+  }
+  var pt = personalTerms(p, buyer);
+  if (o.salario < pt * 0.97) return { status:"jogador", pede:pt, msg:p.nick + " não aceita esse salário. O empresário pede " + money(pt) + "/ano." };
+  if (o.tipo === "multa") {
+    var m = aiMulta(p), com = r1k(m * 0.08);
+    if (m + com > buyer.cash) return { status:"erro", msg:"Caixa insuficiente: a multa é " + money(m) + " + " + money(com) + " de comissão." };
+    doTransfer(p, seller, buyer, m, o.salario, o.anos, "multa");
+    return { status:"aceita", msg:"Você pagou a multa de " + p.nick + ". Ele é seu." };
+  }
+  if (n.rodadas >= 3) return { status:"recusa", msg:seller.nome + " encerrou a negociação por agora. Tente na próxima fase." };
+  var ask = askPrice(p), com2 = r1k(o.valor * 0.08);
+  if (o.valor + com2 > buyer.cash) return { status:"erro", msg:"Caixa insuficiente (a comissão do empresário é " + money(com2) + ")." };
+  if (o.valor >= ask) { doTransfer(p, seller, buyer, o.valor, o.salario, o.anos, "compra"); return { status:"aceita", msg:seller.nome + " aceitou! " + p.nick + " é seu." }; }
+  n.rodadas++;
+  if (o.valor >= ask * 0.72) {
+    var c = r1k(ask - (ask - o.valor) * (0.25 + R() * 0.2));
+    n.contra = c; n.tipo = "compra";
+    return { status:"contra", contra:c, msg:seller.nome + " fez uma contraproposta: " + money(c) + "." + (n.rodadas >= 3 ? " É a última." : "") };
+  }
+  return { status:"recusa", msg:seller.nome + " achou a oferta baixa demais e recusou." + (n.rodadas >= 3 ? " Negociação encerrada por agora." : "") };
+}
+function acceptCounter(pid, salario, anos) {
+  var n = negState(pid), p = P(pid); if (!n.contra) return { status:"erro", msg:"Não há contraproposta." };
+  var buyer = T(S.userTeam), seller = T(p.teamId);
+  if (n.tipo === "emprestimo") { if (n.contra > buyer.cash) return { status:"erro", msg:"Caixa insuficiente." }; doTransfer(p, seller, buyer, n.contra, r1k(p.salary * 0.6), 1, "emprestimo"); n.contra = null; return { status:"aceita", msg:p.nick + " chegou emprestado." }; }
+  var pt = personalTerms(p, buyer);
+  if (salario < pt * 0.97) return { status:"jogador", pede:pt, msg:p.nick + " não aceita esse salário. Pede " + money(pt) + "/ano." };
+  if (n.contra * 1.08 > buyer.cash) return { status:"erro", msg:"Caixa insuficiente." };
+  doTransfer(p, seller, buyer, n.contra, salario, anos, "compra"); n.contra = null;
+  return { status:"aceita", msg:"Negócio fechado: " + p.nick + " é seu." };
+}
+function returnLoans() {
+  Object.keys(S.players).forEach(function (id) {
+    var p = S.players[id]; if (!p.emprestimo) return;
+    var from = T(p.emprestimo.de), cur = p.teamId ? T(p.teamId) : null;
+    if (cur) { cur.roster = cur.roster.filter(function (x) { return x !== id; }); if (cur.lineup) cur.lineup = null; }
+    p.emprestimo = null;
+    if (from && from.roster.length < 7) { p.teamId = from.id; p.contract = Math.max(1, p.contract); from.roster.push(id); }
+    else { p.teamId = null; p.contract = 0; S.freeAgents.push(id); }
+    if (cur && cur.id === S.userTeam) news(p.nick + " voltou pra " + (from ? from.nome : "o mercado") + " no fim do empréstimo.", "info");
+    if (cur) while (cur.roster.length < 5) aiSignFreeAgent(cur);
+  });
+}
+function incomingBids() {
+  var me = userTeam(); if (!me) return;
+  S.propRecebidas = [];
+  me.roster.map(P).forEach(function (p) {
+    if (ovr(p) < 70 || p.emprestimo || R() > 0.22) return;
+    var buyers = Object.keys(S.teams).filter(function (id) { var t = S.teams[id]; return id !== me.id && t.cash > valueFor(p) * 1.2 && t.roster.length < 7 && regionOf(t.liga) === regionOf(me.liga); });
+    if (!buyers.length) return;
+    var b = pick(buyers), val = r1k(valueFor(p) * (0.8 + R() * 0.35));
+    S.propRecebidas.push({ pid:p.id, team:b, valor:val, rod:0 });
+    news("A " + T(b).nome + " fez uma proposta de " + money(val) + " por " + p.nick + ". Veja em Transferências.", "info");
+  });
+}
+function answerBid(i, acao) {
+  var o = (S.propRecebidas || [])[i]; if (!o) return { ok:false, msg:"Proposta expirou." };
+  var me = userTeam(), p = P(o.pid), b = T(o.team);
+  if (acao === "recusar") { S.propRecebidas.splice(i, 1); p.morale = clamp(p.morale - (p.pedidoSaida ? 8 : 2), 20, 99); return { ok:true, msg:"Proposta recusada." }; }
+  if (acao === "contra") {
+    if (o.rod >= 1) return { ok:false, msg:b.nome + " não aceita mais contrapropostas." };
+    o.rod++;
+    if (R() < 0.45) { o.valor = r1k(o.valor * 1.2); return { ok:true, msg:b.nome + " subiu a oferta para " + money(o.valor) + "." }; }
+    S.propRecebidas.splice(i, 1); return { ok:false, msg:b.nome + " desistiu do negócio." };
+  }
+  if (me.roster.length <= 5) return { ok:false, msg:"Você precisa de pelo menos 5 jogadores." };
+  me.roster = me.roster.filter(function (id) { return id !== p.id; }); if (me.lineup) me.lineup = me.lineup.filter(function (id) { return id !== p.id; });
+  me.cash += o.valor; b.cash -= o.valor; p.teamId = b.id; p.contract = 2; b.roster.push(p.id);
+  ledger(me.id, "Transferência", o.valor, "Venda de " + p.nick + " (" + b.tag + ")"); tlog(p, me.id, b.id, o.valor, "Transferência");
+  me.quimica = clamp((me.quimica == null ? 72 : me.quimica) - 4, 30, 95);
+  S.propRecebidas.splice(i, 1);
+  news(p.nick + " foi vendido para a " + b.nome + " por " + money(o.valor) + ".", "info");
+  return { ok:true, msg:"Venda concluída." };
+}
+
+/* ---------------------------------------------------------------------
+   Aprender agentes, IGL e funções táticas
+   --------------------------------------------------------------------- */
+function learnAgent(pid, agent) {
+  var p = P(pid), t = userTeam();
+  if (!p || p.teamId !== t.id) return { ok:false, msg:"Jogador não é seu." };
+  if (p.agents.indexOf(agent) >= 0) return { ok:false, msg:p.nick + " já joga de " + agent + "." };
+  if (p.agents.length >= 5) return { ok:false, msg:p.nick + " já tem 5 agentes. Esse é o limite." };
+  var n = t.roster.map(P).filter(function (x) { return x.aprendendo && x.id !== pid; }).length;
+  if (n >= 2) return { ok:false, msg:"No máximo 2 jogadores aprendendo agentes ao mesmo tempo." };
+  p.aprendendo = { a:agent, prog:0 };
+  return { ok:true, msg:p.nick + " começou a treinar " + agent + "." };
+}
+function stopLearning(pid) { var p = P(pid); if (p) p.aprendendo = null; return { ok:true, msg:"Treino de agente cancelado." }; }
+function learnTick() {
+  var t = userTeam(); if (!t) return;
+  t.roster.map(P).forEach(function (p) {
+    if (!p.aprendendo) return;
+    var sameRole = AGENT_ROLE[p.aprendendo.a] === p.role || p.role === "F";
+    p.aprendendo.prog += (sameRole ? 7 : 4.5) + (p.util - 65) * 0.08 + (p.sense - 65) * 0.05 + staffLvl(t, "tecnico") * 0.8 + (p.age <= 22 ? 1.5 : 0);
+    if (p.aprendendo.prog >= 100) { p.agents.push(p.aprendendo.a); news(p.nick + " terminou o treino e agora joga de " + p.aprendendo.a + ".", "bom"); p.aprendendo = null; }
+  });
+}
+var FUNCOES = { igl:"IGL (capitão)", entry:"Entry", lurker:"Lurker", ancora:"Âncora", suporte:"Suporte" };
+function funcoes(team) {
+  var five = activeFive(team), ids = five.map(function (p) { return p.id; });
+  var f = team.funcoes || {}, out = {};
+  Object.keys(FUNCOES).forEach(function (k) { out[k] = f[k] && ids.indexOf(f[k]) >= 0 ? f[k] : null; });
+  if (team.id !== S.userTeam) {
+    function best(fn, excl) { return five.filter(function (p) { return excl.indexOf(p.id) < 0; }).sort(function (a, b) { return fn(b) - fn(a); })[0]; }
+    var used = [];
+    function set(k, fn) { if (!out[k]) { var b = best(fn, used); if (b) out[k] = b.id; } if (out[k]) used.push(out[k]); }
+    set("igl", function (p) { return p.lead || 60; });
+    set("entry", function (p) { return (p.aim || 60) + (p.role === "D" ? 8 : 0); });
+    set("ancora", function (p) { return (p.sense || 60) + (p.role === "S" ? 10 : 0); });
+    set("suporte", function (p) { return (p.util || 60) + (p.role === "I" || p.role === "C" ? 6 : 0); });
+    set("lurker", function (p) { return p.sense || 60; });
+  }
+  return out;
+}
+function setFuncao(k, pid) {
+  var t = userTeam(); t.funcoes = t.funcoes || {};
+  Object.keys(t.funcoes).forEach(function (x) { if (t.funcoes[x] === pid && x !== k) t.funcoes[x] = null; });
+  t.funcoes[k] = pid || null;
+  return { ok:true, msg:pid ? P(pid).nick + " agora é " + FUNCOES[k] + "." : FUNCOES[k] + " sem jogador." };
+}
+function funcTerm(s, who, side, a, d) {
+  var t = T(who === "A" ? s.A : s.B), f = funcoes(t), comp = who === "A" ? s.compA : s.compB, v = 0;
+  function pl(k) { return f[k] ? P(f[k]) : null; }
+  if (side === "atk") {
+    if (a.plano === "exec" || a.plano === "rush") { var e = pl("entry"); v += e ? clamp((e.aim - 75) * 0.004 + (e.mov - 72) * 0.002, -0.05, 0.06) : -0.03; }
+    if (a.plano === "lurk") { var l = pl("lurker"); v += l ? clamp((l.sense - 72) * 0.005, -0.05, 0.06) : -0.04; }
+    if (a.plano === "split" || a.plano === "fake") { var g = pl("igl"); v += g ? clamp(((g.lead || 60) - 70) * 0.003, -0.04, 0.05) : -0.03; }
+  } else {
+    if (d.setup === "stack" || d.setup === "padrao") { var an = pl("ancora"); v += an ? (AGENT_ROLE[comp[an.id]] === "S" ? 0.03 : 0) + clamp((an.sense - 72) * 0.002, -0.02, 0.03) : -0.02; }
+    if (d.setup === "retake") { var su = pl("suporte"); v += su ? clamp((su.util - 72) * 0.004, -0.04, 0.05) : -0.03; }
+  }
+  return v;
+}
+
+/* ---------------------------------------------------------------------
+   Torcida, hype, coletivas e rede de olheiros
+   --------------------------------------------------------------------- */
+function fansInit(t) { S.torcida = clamp(25 + (t.nivel || 2) * 10 + (isChal(t.liga) ? -10 : 0), 5, 90); S.hype = 50; }
+function fansAfterSeries(won) {
+  if (S.torcida == null) fansInit(userTeam());
+  S.torcida = clamp(S.torcida + (won ? 1.2 : -0.8), 0, 100);
+  S.hype = clamp(S.hype + (won ? 4 : -5), 0, 100);
+}
+var PRESS = {
+  win:{ q:["O time jogou muito hoje. O que mudou?", "Dá pra dizer que vocês são favoritos agora?", "Qual foi a chave da vitória?"],
+    a:[["confiante", "Somos o melhor time dessa liga e vamos provar.", "Hype sobe muito; a moral sobe, mas uma derrota depois dói mais."],
+       ["humilde", "Foi um bom jogo, mas ainda temos muito a melhorar.", "Torcida e diretoria gostam da postura."],
+       ["elogiar", "Todo o mérito é dos jogadores, trabalharam demais.", "Moral e química do elenco sobem."]] },
+  loss:{ q:["O que deu errado hoje?", "A torcida está preocupada. O que você diz?", "Esse resultado coloca o trabalho em risco?"],
+    a:[["culpa", "A responsabilidade é minha. Eu preparei mal o jogo.", "Protege os jogadores (moral sobe), mas a diretoria perde um pouco de confiança."],
+       ["cobrar", "Faltou atitude. Vou cobrar muito nos treinos.", "Forma sobe, moral cai."],
+       ["azar", "Tivemos azar em rounds decisivos, isso acontece.", "A torcida não gosta de desculpa."]] }
+};
+function pressQuestion(res) {
+  var won = res.winner === S.userTeam, k = won ? "win" : "loss", set = PRESS[k];
+  return { tipo:k, q:set.q[(res.wa * 3 + res.wb + (S.diaFase || 0)) % set.q.length], a:set.a };
+}
+function pressAnswer(key, choice) {
+  if (S.pressFeita === key) return { ok:false, msg:"Você já falou com a imprensa." };
+  S.pressFeita = key;
+  var t = userTeam(), five = activeFive(t);
+  var eff = {
+    confiante:function () { S.hype = clamp(S.hype + 12, 0, 100); five.forEach(function (p) { p.morale = clamp(p.morale + 3, 20, 99); }); return "A frase virou manchete. O hype foi lá em cima."; },
+    humilde:function () { S.torcida = clamp(S.torcida + 2, 0, 100); boardDelta(1.5, "Postura na coletiva"); return "A torcida e a diretoria gostaram da humildade."; },
+    elogiar:function () { five.forEach(function (p) { p.morale = clamp(p.morale + 4, 20, 99); }); t.quimica = clamp((t.quimica || 70) + 2, 30, 95); return "Os jogadores gostaram de ouvir isso."; },
+    culpa:function () { five.forEach(function (p) { p.morale = clamp(p.morale + 4, 20, 99); }); boardDelta(-1.5, "Assumiu a culpa na coletiva"); return "O elenco sentiu que você bancou eles."; },
+    cobrar:function () { five.forEach(function (p) { p.form = clamp(p.form + 0.4, -3, 3); p.morale = clamp(p.morale - 5, 20, 99); }); return "O recado foi dado. Alguns jogadores não gostaram."; },
+    azar:function () { S.torcida = clamp(S.torcida - 3, 0, 100); boardDelta(-2, "Desculpas na coletiva"); five.forEach(function (p) { p.morale = clamp(p.morale + 1, 20, 99); }); return "Os fãs acharam desculpa esfarrapada."; }
+  }[choice];
+  var msg = eff ? eff() : "";
+  return { ok:true, msg:msg };
+}
+function scoutRegion(r) { S.olheiroRegiao = r; return { ok:true, msg:"Olheiro enviado pra " + (r === "livres" ? "o mercado de agentes livres" : S.ligasNome[r]) + "." }; }
+function scoutNetworkTick() {
+  var t = userTeam(); if (!t || !S.olheiroRegiao) return;
+  var lv = staffLvl(t, "olheiro"), n = 2 + lv;
+  var pool = Object.keys(S.players).map(P).filter(function (p) {
+    if (p.aposentado || p.academia || S.scout[p.id]) return false;
+    if (S.olheiroRegiao === "livres") return S.freeAgents.indexOf(p.id) >= 0;
+    return p.teamId && T(p.teamId).liga === S.olheiroRegiao && p.teamId !== t.id;
+  });
+  pool.sort(function (a, b) { return ((b.pot || ovr(b)) - ovr(b)) * 0.6 + ovr(b) * 0.4 - (((a.pot || ovr(a)) - ovr(a)) * 0.6 + ovr(a) * 0.4) + (R() - 0.5) * 8; });
+  var achados = pool.slice(0, n);
+  S.relatorios = S.relatorios || [];
+  achados.forEach(function (p) {
+    S.scout[p.id] = true;
+    var nota = p.age <= 20 && (p.pot || 0) >= 82 ? "Joia" : ovr(p) >= 80 ? "Pronto pra ser titular" : (p.pot || 0) - ovr(p) >= 8 ? "Bom potencial" : ovr(p) >= 72 ? "Reforço sólido" : "Opção barata";
+    S.relatorios.unshift({ pid:p.id, nota:nota, temp:S.temporada, fase:S.fase, regiao:S.olheiroRegiao });
+  });
+  if (S.relatorios.length > 60) S.relatorios.length = 60;
+  if (achados.length) news("Relatório do olheiro: " + achados.length + " jogador(es) observados" + (achados.some(function (p) { return p.age <= 20 && (p.pot || 0) >= 82; }) ? ", incluindo uma joia" : "") + ". Veja em Olheiros.", "info");
+}
+
 function money(v) {
   var neg = v < 0; v = Math.abs(v);
   var s = v >= 1e6 ? (v / 1e6).toFixed(2).replace(/\.?0+$/, "") + " mi" : v >= 1e3 ? Math.round(v / 1e3) + " mil" : String(v);
@@ -2190,13 +2573,18 @@ function money(v) {
 /* ---------------------------------------------------------------------
    Salvar / carregar
    --------------------------------------------------------------------- */
-var SAVE_KEY = "vctmanager_save_v1";
+var SLOT = 1;
+try { SLOT = +localStorage.getItem("vct_slot") || 1; } catch (e) {}
+function slotKey(n) { return n === 1 ? "vctmanager_save_v1" : "vctmanager_save_v1_s" + n; }
+function setSlot(n) { SLOT = n; try { localStorage.setItem("vct_slot", String(n)); } catch (e) {} }
+function getSlot() { return SLOT; }
 function save() {
-  try { localStorage.setItem(SAVE_KEY, JSON.stringify(S)); return true; } catch (e) { return false; }
+  try { localStorage.setItem(slotKey(SLOT), JSON.stringify(S)); return true; } catch (e) { return false; }
 }
-function load() {
+function load(n) {
   try {
-    var raw = localStorage.getItem(SAVE_KEY);
+    if (n) setSlot(n);
+    var raw = localStorage.getItem(slotKey(SLOT));
     if (!raw) return null;
     S = JSON.parse(raw);
     rng = mulberry((S.seed + S.nextId * 7919 + S.fase * 31) >>> 0);
@@ -2204,8 +2592,17 @@ function load() {
     return S;
   } catch (e) { return null; }
 }
-function hasSave() { try { return !!localStorage.getItem(SAVE_KEY); } catch (e) { return false; } }
-function wipe() { try { localStorage.removeItem(SAVE_KEY); } catch (e) {} S = null; }
+function slotInfo(n) {
+  try {
+    var raw = localStorage.getItem(slotKey(n)); if (!raw) return null;
+    var x = JSON.parse(raw), t = x.teams && x.teams[x.userTeam];
+    if (!t) return null;
+    return { slot:n, team:t.nome, tag:t.tag, custom:x.customOrg || null, manager:x.manager ? x.manager.nick : "—", temporada:x.temporada, fase:FASES[x.fase] ? FASES[x.fase].nome : "", dif:(DIF[x.dif || "normal"] || DIF.normal).nome, titulos:(x.conquistas || []).length, tamanho:Math.round(raw.length / 1024) };
+  } catch (e) { return null; }
+}
+function deleteSlot(n) { try { localStorage.removeItem(slotKey(n)); } catch (e) {} }
+function hasSave() { for (var i = 1; i <= 3; i++) { try { if (localStorage.getItem(slotKey(i))) return true; } catch (e) { return false; } } return false; }
+function wipe() { deleteSlot(SLOT); S = null; }
 function exportSave() { return JSON.stringify(S); }
 function importSave(txt) { S = JSON.parse(txt); rng = mulberry((S.seed + S.nextId) >>> 0); migrate(); return S; }
 
@@ -2213,9 +2610,10 @@ function importSave(txt) { S = JSON.parse(txt); rng = mulberry((S.seed + S.nextI
    API exposta
    --------------------------------------------------------------------- */
 window.VM = {
+  MAP_TRAITS:MAP_TRAITS, mapTerm:mapTerm, ultMax:ultMax,
   get S() { return S; },
   CHAL:CHAL, isChal:isChal, EXTRA:EXTRA, SITES:SITES, ATK_PLANOS:ATK_PLANOS, DEF_SETUPS:DEF_SETUPS,
-  STAFF_ROLES:STAFF_ROLES, STAFF_NOME:STAFF_NOME, STAFF_EFEITO:STAFF_EFEITO, staffOf:staffOf, staffLvl:staffLvl, staffPayroll:staffPayroll, incomeFor:incomeFor, DIF:DIF, dif:dif, setDif:setDif, healthy:healthy, salaryCap:salaryCap, payroll:payroll, objetivoCheck:objetivoCheck, setLineupChem:setLineupChem, createOrg:createOrg, boardDelta:boardDelta, expectedPos:expectedPos, acceptOffer:acceptOffer, rejectOffer:rejectOffer, talk:talk, contractAsk:contractAsk, negotiate:negotiate, genYouth:genYouth, academyCost:academyCost, upgradeAcademy:upgradeAcademy, promoteYouth:promoteYouth, releaseYouth:releaseYouth, doScrim:doScrim, scrimReport:scrimReport, metaBonus:metaBonus, teamProfile:teamProfile, MAP_BENCH:MAP_BENCH, objetivoPara:objetivoPara, talkKey:talkKey, baseIncome:baseIncome, sponsorIncome:sponsorIncome, SPONSORS:SPONSORS, sponsorById:sponsorById, sponsorReq:sponsorReq, setSponsor:setSponsor, QG_ITEMS:QG_ITEMS, qgBonus:qgBonus, qgCost:qgCost, qgUpgrade:qgUpgrade, qgEff:qgEff, setUserTeam:setUserTeam, eloInit:eloInit, MGR_ATTRS:MGR_ATTRS, mgr:mgr,
+  STAFF_ROLES:STAFF_ROLES, STAFF_NOME:STAFF_NOME, STAFF_EFEITO:STAFF_EFEITO, staffOf:staffOf, staffLvl:staffLvl, staffPayroll:staffPayroll, incomeFor:incomeFor, pressQuestion:pressQuestion, pressAnswer:pressAnswer, scoutRegion:scoutRegion, learnAgent:learnAgent, stopLearning:stopLearning, FUNCOES:FUNCOES, funcoes:funcoes, setFuncao:setFuncao, clubOffer:clubOffer, acceptCounter:acceptCounter, askPrice:askPrice, personalTerms:personalTerms, aiMulta:aiMulta, loanFee:loanFee, isStarter:isStarter, negState:negState, answerBid:answerBid, DIF:DIF, dif:dif, setDif:setDif, healthy:healthy, salaryCap:salaryCap, payroll:payroll, objetivoCheck:objetivoCheck, setLineupChem:setLineupChem, createOrg:createOrg, boardDelta:boardDelta, expectedPos:expectedPos, acceptOffer:acceptOffer, rejectOffer:rejectOffer, talk:talk, contractAsk:contractAsk, negotiate:negotiate, genYouth:genYouth, academyCost:academyCost, upgradeAcademy:upgradeAcademy, promoteYouth:promoteYouth, releaseYouth:releaseYouth, doScrim:doScrim, scrimReport:scrimReport, metaBonus:metaBonus, teamProfile:teamProfile, MAP_BENCH:MAP_BENCH, objetivoPara:objetivoPara, talkKey:talkKey, baseIncome:baseIncome, sponsorIncome:sponsorIncome, SPONSORS:SPONSORS, sponsorById:sponsorById, sponsorReq:sponsorReq, setSponsor:setSponsor, QG_ITEMS:QG_ITEMS, qgBonus:qgBonus, qgCost:qgCost, qgUpgrade:qgUpgrade, qgEff:qgEff, setUserTeam:setUserTeam, eloInit:eloInit, MGR_ATTRS:MGR_ATTRS, mgr:mgr,
   hireStaff:hireStaff, fireStaff:fireStaff, observe:observe, isScouted:isScouted, scoutLimit:scoutLimit, mapGain:mapGain,
   playerStars:playerStars, potStars:potStars, ensureTactics:ensureTactics, defaultTactic:defaultTactic, tacticTerm:tacticTerm, AGENTS:AGENTS, AGENT_ROLE:AGENT_ROLE, ROLE_NAME:ROLE_NAME, MAP_ATK:MAP_ATK, BUY_NAME:BUY_NAME, FASES:FASES, TREINOS:TREINOS,
   P:P, T:T, ovr:ovr, valueFor:valueFor, salaryFor:salaryFor, money:money, posLabel:posLabel,
@@ -2227,6 +2625,6 @@ window.VM = {
   standings:standings, TEMPLATES:TEMPLATES, nodeTeam:nodeTeam, stageDone:stageDone,
   buyPlayer:buyPlayer, signFree:signFree, sellOffer:sellOffer, sellPlayer:sellPlayer, renewPlayer:renewPlayer,
   releaseUser:releaseUser, marketOpen:marketOpen, strength:strength,
-  save:save, load:load, hasSave:hasSave, wipe:wipe, exportSave:exportSave, importSave:importSave, news:news
+  save:save, load:load, hasSave:hasSave, wipe:wipe, setSlot:setSlot, getSlot:getSlot, slotInfo:slotInfo, deleteSlot:deleteSlot, exportSave:exportSave, importSave:importSave, news:news
 };
 })();
