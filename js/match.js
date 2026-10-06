@@ -172,6 +172,36 @@ function beginMap() {
   M.dstats = clone(M.sim.stats);
   M.five = { A:VM.activeFive(A), B:VM.activeFive(B) };
 }
+/* ---------------------------------------------------------------------
+   Replay de série já simulada (modo Draft)
+   --------------------------------------------------------------------- */
+function startReplay(rp, opts) {
+  opts = opts || {};
+  M = { replay:true, rp:rp, A:rp.a, B:rp.b, bo:rp.bo, user:opts.user || "A", etapa:"live", maps:rp.maps.map(function (x) { return { map:x.map }; }),
+    mapIdx:0, results:[], wa:0, wb:0, speed:"normal", paused:false, feed:[], m:{ evNome:opts.evNome || "Draft" }, onExit:opts.onExit || null, cam:"auto" };
+  beginReplayMap();
+}
+function beginReplayMap() {
+  var x = M.rp.maps[M.mapIdx], st = {}, pe = {};
+  var idsA = Object.keys(x.compA), idsB = Object.keys(x.compB);
+  idsA.concat(idsB).forEach(function (id) { st[id] = { k:0, d:0, a:0, fk:0, fd:0, dmg:0, kast:0, rd:0, cl:0, mk:0 }; pe[id] = { cr:800, ult:0, max:7, arma:null }; });
+  var r0 = x.rounds[0]; if (r0 && r0.pe) Object.keys(r0.pe).forEach(function (id) { if (pe[id]) pe[id].max = r0.pe[id].max; });
+  M.sim = { replay:true, A:M.A, B:M.B, map:x.map, atkFirst:x.atkFirst, compA:x.compA, compB:x.compB, sa:0, sb:0, round:0, credA:800, credB:800,
+    toA:2, toB:2, streakA:0, streakB:0, callA:"auto", callB:"auto", ultA:"auto", ultB:"auto", rounds:[], stats:st, pe:pe, done:false, winner:null,
+    tacA:VM.defaultTactic(x.map), tacB:VM.defaultTactic(x.map), finalStats:x.stats, total:x.rounds.length, src:x.rounds };
+  M.feed = []; M.paused = false; M.cur = null; M.etapa = "live";
+  M.dstats = clone(st);
+  M.five = { A:idsA.map(VM.P), B:idsB.map(VM.P) };
+}
+function replayStep(s) {
+  var r = s.src[s.round];
+  r.ev.kills.forEach(function (k) { if (s.stats[k.k]) s.stats[k.k].k++; if (s.stats[k.v]) s.stats[k.v].d++; });
+  if (r.w === "A") { s.sa++; s.streakA++; s.streakB = 0; } else { s.sb++; s.streakB++; s.streakA = 0; }
+  s.credA = r.credA; s.credB = r.credB; if (r.pe) s.pe = r.pe;
+  s.rounds.push(r); s.round++;
+  if (s.round >= s.total) { s.done = true; s.winner = s.sa > s.sb ? "A" : "B"; s.stats = clone(s.finalStats); }
+  return r;
+}
 function myTac() { return M.user === "A" ? M.sim.tacA : M.sim.tacB; }
 function nextSideA() {
   var s = M.sim, fa = s.atkFirst === "A", r = s.round;
@@ -195,6 +225,8 @@ function roundDots() {
   }).join("");
 }
 function controlsHtml() {
+  if (M.replay) return '<div class="crow"><span class="lbl">Replay</span>' + G.seg("mVel", M.paused ? "pausa" : M.speed, [["pausa", M.paused ? "▶ Continuar" : "❚❚ Pausar"], ["normal", "Normal"], ["rapido", "Rápido"], ["turbo", "Turbo"]], "sm") +
+    '<button class="btn sm ghost" data-a="mSkipRound">Pular round</button><button class="btn sm ghost" data-a="mSkipMap">Pular mapa</button><button class="btn sm ghost" data-a="mSair">Sair do replay</button></div>';
   var s = M.sim, u = M.user;
   var call = u === "A" ? s.callA : s.callB, to = u === "A" ? s.toA : s.toB;
   var style = myTac().estilo ? myTac().estilo[mySideNext()] : (u === "A" ? s.styleA : s.styleB);
@@ -429,13 +461,13 @@ function faceAngle(p, who, t, c) {
 function startRound(now) {
   var s = M.sim, opp = M.user === "A" ? "B" : "A";
   var oppStreakAgainst = opp === "A" ? s.streakB : s.streakA;
-  if (oppStreakAgainst >= 3 && (opp === "A" ? s.toA : s.toB) > 0 && Math.random() < 0.6) {
+  if (!M.replay && oppStreakAgainst >= 3 && (opp === "A" ? s.toA : s.toB) > 0 && Math.random() < 0.6) {
     VM.useTimeout(s, opp); M.feed.unshift({ t:teamOf(opp).tag + " pede pausa tática.", k:"to" });
   }
   var pre = { sa:s.sa, sb:s.sb };
   M.dstats = clone(s.stats);
   var preStats = clone(s.stats);
-  var r = VM.stepRound(s);
+  var r = M.replay ? replayStep(s) : VM.stepRound(s);
   if (M.user === "A") s.callA = "auto"; else s.callB = "auto";
   if (M.user === "A" && s.ultA === "usar") s.ultA = "auto"; if (M.user === "B" && s.ultB === "usar") s.ultB = "auto";
   var plan = buildPlan(r);
@@ -564,6 +596,7 @@ function finishCurrentRoundInstant() {
 function onMapDone() {
   stopLoop();
   var s = M.sim;
+  if (M.replay) { if (s.winner === "A") M.wa++; else M.wb++; return; }
   var sum = VM.mapSummary(s);
   sum.compNotes = VM.compAnalysis(G.me(), M.comps[M.mapIdx]).notes;
   M.results.push(sum);
@@ -577,7 +610,7 @@ function mapDoneBox() {
   var my = M.user === "A" ? s.sa + "–" + s.sb : s.sb + "–" + s.sa;
   return '<div class="card mapdone ' + (won ? "won" : "lost") + '"><div class="k">Fim do mapa · ' + esc(s.map) + "</div><h2>" + (won ? "VITÓRIA" : "DERROTA") + " " + my + "</h2>" +
     '<div class="mvp">' + G.face(mvp, "lg") + "<div><small>MVP do mapa</small><strong>" + esc(mvp.nick) + "</strong><span>" + s.stats[mvp.id].k + "/" + s.stats[mvp.id].d + "/" + s.stats[mvp.id].a + "</span></div></div>" +
-    '<div class="row">' + (over ? '<button class="btn primary" data-a="mFinal">Ver relatório da série</button>' : '<button class="btn primary" data-a="mProxMapa">Próximo mapa: ' + esc(M.maps[M.mapIdx + 1].map) + "</button>") + "</div></div>";
+    '<div class="row">' + (M.replay ? (over ? '<button class="btn primary" data-a="mSair">Fechar replay</button>' : '<button class="btn primary" data-a="mProxMapa">Próximo mapa: ' + esc(M.maps[M.mapIdx + 1].map) + '</button><button class="btn ghost" data-a="mSair">Sair do replay</button>') : over ? '<button class="btn primary" data-a="mFinal">Ver relatório da série</button>' : '<button class="btn primary" data-a="mProxMapa">Próximo mapa: ' + esc(M.maps[M.mapIdx + 1].map) + "</button>") + "</div></div>";
 }
 
 /* ---------------------------------------------------------------------
@@ -691,6 +724,7 @@ ACT.mSkipMap = function () {
   if (M.cur && !M.cur.ended) { M.feed.unshift({ t:"R" + M.cur.r.n + " · " + M.cur.r.txt, k:M.cur.r.w === M.user ? "w" : "l", up:M.cur.r.upset }); }
   M.cur = null;
   var s = M.sim, opp = M.user === "A" ? "B" : "A";
+  if (M.replay) { while (!s.done) { var rr0 = replayStep(s); M.feed.unshift({ t:"R" + rr0.n + " · " + rr0.txt, k:rr0.w === M.user ? "w" : "l", up:rr0.upset }); } M.dstats = clone(s.stats); onMapDone(); rr(); return; }
   while (!s.done) {
     var st = opp === "A" ? s.streakB : s.streakA;
     if (st >= 3 && (opp === "A" ? s.toA : s.toB) > 0 && Math.random() < 0.6) VM.useTimeout(s, opp);
@@ -701,12 +735,13 @@ ACT.mSkipMap = function () {
   M.dstats = clone(s.stats);
   onMapDone(); rr();
 };
-ACT.mProxMapa = function () { M.mapIdx++; beginMap(); G.UI.scrollTop = 0; rr(); };
+ACT.mProxMapa = function () { M.mapIdx++; if (M.replay) beginReplayMap(); else beginMap(); G.UI.scrollTop = 0; rr(); };
 ACT.mFinal = function () { finalizeSeries(); G.UI.scrollTop = 0; rr(); };
-ACT.mSair = function () { M = null; G.UI.view = "inicio"; G.UI.scrollTop = 0; rr(); };
+ACT.mSair = function () { if (M && M.replay) { stopLoop(); var cb = M.onExit; M = null; if (cb) cb(); rr(); return; } M = null; G.UI.view = "inicio"; G.UI.scrollTop = 0; rr(); };
 
 window.MATCH = {
   start:start,
+  replay:startReplay,
   locked:function () { return !!M; },
   view:function () {
     if (M.etapa === "veto") return viewVeto();

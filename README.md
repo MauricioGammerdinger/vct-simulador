@@ -31,6 +31,12 @@ O progresso fica salvo no próprio navegador. Pra fazer backup, use Configuraç�
 - Aprender agentes, funções táticas (IGL, entry, lurker, âncora, suporte), imprensa, torcida, rede de olheiros e dicas no jogo.
 - Partida ao vivo ajustada pra celular.
 
+## Modo Draft
+
+No menu inicial, **Modo Draft**: draft em serpentina com cartas de jogadores por temporada (2021 a 2026, ex.: TenZ 2021, aspas 2022), tempo por pick e 6 picks por time. Depois, um Champions de 16 times (4 grupos GSL + playoffs em dupla eliminação, final Bo5). Antes de cada rodada você escolhe titulares, ordem dos mapas pro veto e tática por mapa; os jogos rodam juntos e dá pra assistir o seu no mapa 2D.
+
+Online com amigos funciona na versão publicada no Claude (salas em tempo real, bots completam as vagas). Abrindo o `index.html` direto, o modo roda só contra bots. As cartas antigas ficam em `js/lendas.js`.
+
 ## Estrutura
 
 ```
@@ -44,9 +50,11 @@ css/
   entrada.css       menu inicial, criar manager, contrato
   tema-manager.css  visual estilo manager, QG, patrocínio, finanças
   carreira.css      diretoria, conversas, academia, hall da fama, meta
+  draft.css         Modo Draft
 js/
   sfx.js            sons e música (Web Audio, sem arquivos)
   base-real.js      times e jogadores (elencos públicos do vlr.gg, set/2026)
+  lendas.js         cartas do Modo Draft (versões de 2021 a 2025)
   engine.js         simulação, competições, mercado, staff, táticas, finanças
   art.js            avatares, escudos, troféu e mapas 2D gerados em SVG
   ui.js             casca do jogo e telas de gestão
@@ -54,6 +62,7 @@ js/
   match.js          veto, preparação e partida ao vivo
   carreira.js       diretoria, conversas, contrato, academia, hall da fama
   intro.js          menu inicial, criação de manager/organização, escolha de time e contrato
+  draft.js          Modo Draft: sala online, draft e campeonato
 tests/              testes automáticos do motor (e um opcional no navegador)
 fotos/, escudos/    imagens opcionais suas
 ```
@@ -68,7 +77,7 @@ Precisa só do Node.js (18 ou mais novo):
 npm test
 ```
 
-Roda sem navegador: duas temporadas inteiras conferindo formatos (Kickoff, Play-Ins, Champions), elencos e caixa; economia e ultimates em 150 mapas; negociação, saves e funções; e se a dificuldade fortalece só a IA.
+Roda sem navegador: duas temporadas inteiras conferindo formatos (Kickoff, Play-Ins, Champions), elencos e caixa; economia e ultimates em 150 mapas; negociação, saves e funções; se a dificuldade fortalece só a IA; e o Modo Draft inteiro (cartas, campeonato e a tabela reconstruída por quem só assiste).
 
 Teste opcional no navegador (abre todas as telas e procura erros):
 

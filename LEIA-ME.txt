@@ -41,6 +41,20 @@ O QUE TEM
   âncora, suporte), coletivas de imprensa, torcida e hype, rede de olheiros,
   dicas no jogo e partida ao vivo ajustada pro celular.
 
+MODO DRAFT
+- No menu inicial, clique em Modo Draft. Monte seu time escolhendo jogadores
+  de 2021 a 2026 (cartas por temporada, ex.: TenZ 2021, aspas 2022) num draft
+  em serpentina com tempo por pick. Depois dispute um Champions de 16 times
+  (4 grupos GSL + playoffs em dupla eliminação, final Bo5).
+- Antes de cada rodada: titulares, ordem dos mapas pro veto e tática por mapa.
+  Os jogos da rodada rodam juntos e dá pra assistir o seu no mapa 2D.
+- Online: só na versão publicada no Claude. Quem cria a sala é o anfitrião
+  (precisa ser o dono do jogo ou ter acesso de colaborador). Os amigos entram
+  pelo código da sala; convide cada um pelo e-mail no botão Compartilhar (link
+  público não entra na sala). Vagas que sobrarem viram bots.
+- Abrindo o index.html no PC, o Modo Draft funciona só contra bots.
+- As cartas antigas ficam em js/lendas.js; dá pra editar nível, time e agentes.
+
 ARQUIVOS
 - index.html          -> abre o jogo (só a estrutura da página)
 - css/                -> estilos, separados por parte do jogo
@@ -52,9 +66,11 @@ ARQUIVOS
     entrada.css       -> menu inicial, criar manager, contrato
     tema-manager.css  -> visual estilo manager, QG, patrocínio, finanças
     carreira.css      -> diretoria, conversas, academia, hall da fama, meta
+    draft.css         -> Modo Draft
 - js/                 -> código do jogo
     sfx.js            -> sons e música (Web Audio, sem arquivos)
     base-real.js      -> times e jogadores (elencos do vlr.gg em 28/09/2026)
+    lendas.js         -> cartas do Modo Draft (versões de 2021 a 2025)
     engine.js         -> simulação, competições, mercado, staff, táticas, finanças
     art.js            -> avatares, escudos, troféu e mapas 2D gerados
     ui.js             -> casca do jogo e telas de gestão
@@ -64,6 +80,7 @@ ARQUIVOS
     carreira.js       -> diretoria, conversas, contrato, academia, hall da fama
     intro.js          -> menu inicial, criar manager, criar organização,
                          escolha de time, contrato
+    draft.js          -> Modo Draft: sala online, draft e campeonato
 - tests/              -> testes automáticos (node tests/rodar.js)
 - fotos/, escudos/    -> suas imagens opcionais (veja abaixo)
 

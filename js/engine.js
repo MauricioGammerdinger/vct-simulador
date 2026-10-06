@@ -539,6 +539,7 @@ function ecoAfter(s, key, won, lossStreak, ev, planted) {
   });
 }
 
+function ctl(s, who) { return s.userSide === who || !!(s.ctrl && s.ctrl[who]); }
 function sideOf(s, who, rnd) {
   /* rnd = índice do round (0-based). 0-11 primeira metade, 12-23 segunda, 24+ prorrogação alterna. */
   var firstAtk = s.atkFirst === who;
@@ -573,7 +574,7 @@ function resolveAtk(s, who, buy) {
   var team = T(who === "A" ? s.A : s.B), sites = SITES[s.map] || ["A", "B"];
   var tac = (who === "A" ? s.tacA : s.tacB);
   var plano, site;
-  if (tac && s.userSide === who) {
+  if (tac && ctl(s, who)) {
     var pc = tac.atk.compra && tac.atk.compra[buy];
     plano = pc && pc !== "igual" ? pc : (buy === "eco" && tac.atk.eco && tac.atk.eco !== "igual") ? tac.atk.eco : tac.atk.plano;
     site = tac.atk.site === "variar" ? pick(sites) : tac.atk.site;
@@ -597,12 +598,12 @@ function resolveAtk(s, who, buy) {
   }
   if (sites.indexOf(site) < 0) site = sites[0];
   var fakeSite = plano === "fake" ? pick(sites.filter(function (x) { return x !== site; })) : null;
-  return { plano:plano, site:site, fakeSite:fakeSite, ritmo:tac && s.userSide === who ? tac.atk.ritmo : pick(["rapido", "medio", "medio", "lento"]) };
+  return { plano:plano, site:site, fakeSite:fakeSite, ritmo:tac && ctl(s, who) ? tac.atk.ritmo : pick(["rapido", "medio", "medio", "lento"]) };
 }
 function resolveDef(s, who, atkWho) {
   var team = T(who === "A" ? s.A : s.B), sites = SITES[s.map] || ["A", "B"];
   var tac = (who === "A" ? s.tacA : s.tacB);
-  if (tac && s.userSide === who) return { setup:tac.def.setup, site:tac.def.site, rotacao:tac.def.rotacao };
+  if (tac && ctl(s, who)) return { setup:tac.def.setup, site:tac.def.site, rotacao:tac.def.rotacao };
   /* IA lê a tendência do ataque adversário */
   var hist = (atkWho === "A" ? s.histA : s.histB).slice(-4);
   var cnt = {}; hist.forEach(function (h) { cnt[h.site] = (cnt[h.site] || 0) + 1; });
@@ -623,7 +624,7 @@ function resolveDef(s, who, atkWho) {
 
 function styleOf(s, who, side) {
   var tac = who === "A" ? s.tacA : s.tacB;
-  if (tac && s.userSide === who && tac.estilo && tac.estilo[side]) return tac.estilo[side];
+  if (tac && ctl(s, who) && tac.estilo && tac.estilo[side]) return tac.estilo[side];
   var st = who === "A" ? s.styleA : s.styleB;
   if (st && st !== "padrao") return st;
   var pf = teamProfile(T(who === "A" ? s.A : s.B));
@@ -2579,6 +2580,7 @@ function slotKey(n) { return n === 1 ? "vctmanager_save_v1" : "vctmanager_save_v
 function setSlot(n) { SLOT = n; try { localStorage.setItem("vct_slot", String(n)); } catch (e) {} }
 function getSlot() { return SLOT; }
 function save() {
+  if (S && S.modo === "draft") return false;
   try { localStorage.setItem(slotKey(SLOT), JSON.stringify(S)); return true; } catch (e) { return false; }
 }
 function load(n) {
@@ -2609,7 +2611,124 @@ function importSave(txt) { S = JSON.parse(txt); rng = mulberry((S.seed + S.nextI
 /* ---------------------------------------------------------------------
    API exposta
    --------------------------------------------------------------------- */
+/* ---------------------------------------------------------------------
+   Modo Draft: cartas, mundo de 16 times e campeonato no formato Champions
+   --------------------------------------------------------------------- */
+function draftCards(db, lendas) {
+  var out = [], seen = {};
+  function add(c) {
+    if (seen[c.id]) return; seen[c.id] = 1;
+    var a = genAttrs(c.nivel - 1, c.role, 0, "carta:" + c.id);
+    c.aim = a.aim; c.util = a.util; c.sense = a.sense; c.clutch = a.clutch; c.comms = a.comms;
+    c.ovr = ovr(c); out.push(c);
+  }
+  (lendas || []).forEach(function (l) { add({ id:l[0] + "-" + l[1], nick:l[0], ano:l[1], time:l[2], nat:l[3], role:l[4], nivel:l[5], agents:l.slice(6) }); });
+  db.times.filter(function (t) { return LIGAS_VCT.indexOf(t.liga) >= 0; }).forEach(function (t) {
+    t.jogadores.forEach(function (row) {
+      var nivel = Math.min(92, baseForTier(t.liga, t.nivel) + (STARS[row[0]] || 0) + 2);
+      add({ id:row[0] + "-" + db.temporada, nick:row[0], ano:db.temporada, time:t.tag, nat:row[1], role:row[2], nivel:nivel, agents:row.slice(3) });
+    });
+  });
+  return out.sort(function (a, b) { return b.ovr - a.ovr || (a.id < b.id ? -1 : 1); });
+}
+/* cfg: { seed, mapas, times:[{ id, tag, nome, cor, humano, cartas:[carta...] }] } (16 times) */
+function draftWorld(db, cfg) {
+  newWorld(db, cfg.seed);
+  S.modo = "draft"; S.teams = {}; S.players = {}; S.freeAgents = []; S.eventos = []; S.cp = {}; S.staffLivre = []; S.staff = {};
+  S.userTeam = null; S.dif = "normal"; S.mapas = cfg.mapas.slice(); S.ligasNome = { DRAFT:"Draft" }; S.manager = { nick:"draft", attrs:{} };
+  S.historico = []; S.noticias = [];
+  cfg.times.forEach(function (t) {
+    var team = { id:t.id, tag:t.tag, nome:t.nome, liga:"DRAFT", pais:"", nivel:5, tecnico:"—", roster:[], cash:0, mapProf:{}, staff:{},
+      quimica:80, humano:!!t.humano, cor:t.cor || null, desafiante:false };
+    t.cartas.forEach(function (c) {
+      var p = newPlayer({ nick:c.nick, nat:c.nat, role:c.role, agents:(c.agents || []).slice(), age:22, teamId:t.id, contract:1,
+        aim:c.aim, util:c.util, sense:c.sense, clutch:c.clutch, comms:c.comms });
+      p.carta = c.id; p.ano = c.ano; p.morale = 75; team.roster.push(p.id);
+    });
+    if (t.titulares) team.titulares = t.titulares.slice();
+    S.mapas.forEach(function (m) { var r = mulberry(hashStr(cfg.seed + ":" + t.id + ":" + m)); team.mapProf[m] = clamp(Math.round(72 + (r() * 16 - 8)), 55, 90); });
+    S.teams[t.id] = team; S.cp[t.id] = 0;
+    ensureTactics(team);
+  });
+  var ids = cfg.times.map(function (t) { return t.id; });
+  var ord = ids.slice().sort(function (a, b) { return draftForca(b) - draftForca(a); });
+  var groups = [[], [], [], []];
+  ord.forEach(function (id, i) { var row = Math.floor(i / 4), k = i % 4; groups[row % 2 ? 3 - k : k].push(id); });
+  var ev = newEvent({ id:"DRAFT", nome:"Champions do Draft", tipo:"CHAMPIONS", plano:"CHAMPIONS", premio:PRIZE.CHAMPIONS });
+  ev.extra.groups = groups; ev.extra.gi = 0;
+  ev.stages.push({ kind:"multi", label:"Fase de grupos (GSL)", day:0,
+    subs:groups.map(function (g, i) { return newBracket("GSL", g, 3, "Grupo " + String.fromCharCode(65 + i)); }) });
+  S.eventos.push(ev);
+  return S;
+}
+function draftForca(id) { var t = T(id); return sum(activeFive(t).map(ovr)) / 5; }
+/* Veto por preferência: pref = lista de mapas do melhor pro pior. */
+function draftVeto(A, B, bo, prefA, prefB) {
+  var pool = S.mapas.slice(), maps = [], log = [], steps = vetoSteps(bo);
+  function pref(who) { var p = who === "A" ? prefA : prefB; return p && p.length ? p.filter(function (m) { return pool.indexOf(m) >= 0; }) : null; }
+  steps.forEach(function (st) {
+    if (st.act === "decider") { var m = pool[0], ch = bo === 5 ? "B" : "A"; maps.push({ map:m, pickedBy:"-", sideChooser:ch, side:aiSideChoice(ch === "A" ? A : B, m) }); log.push("Decider: " + m); return; }
+    var me = st.who === "A" ? A : B, opp = st.who === "A" ? B : A, pr = pref(st.who), m;
+    if (pr) m = st.act === "ban" ? pr[pr.length - 1] : pr[0];
+    else m = aiVetoChoice(me, opp, pool, st.act);
+    pool.splice(pool.indexOf(m), 1);
+    if (st.act === "pick") { var ch2 = st.who === "A" ? "B" : "A"; maps.push({ map:m, pickedBy:st.who, sideChooser:ch2, side:aiSideChoice(ch2 === "A" ? A : B, m) }); }
+    log.push(me.tag + (st.act === "ban" ? " bane " : " escolhe ") + m);
+  });
+  return { maps:maps, log:log };
+}
+function slimRound(r) {
+  return { n:r.n, w:r.w, sideA:r.sideA, buyA:r.buyA, buyB:r.buyB, upset:r.upset, txt:r.txt, tipo:r.tipo, credA:r.credA, credB:r.credB,
+    ultsA:r.ultsA, ultsB:r.ultsB, atk:{ plano:r.atk.plano, site:r.atk.site }, def:{ setup:r.def.setup, site:r.def.site },
+    ev:{ site:r.ev.site, plant:r.ev.plant, defuse:r.ev.defuse, kills:r.ev.kills.map(function (k) { return { t:Math.round(k.t * 1000) / 1000, k:k.k, v:k.v, kt:k.kt }; }) },
+    pe:Object.keys(r.pe).reduce(function (o, id) { var e = r.pe[id]; o[id] = { cr:e.cr, ult:e.ult, max:e.max, arma:e.arma, drop:e.drop || null }; return o; }, {}) };
+}
+/* Série com o plano de cada time humano. plan[teamId] = { pref:[mapas], tat:{ mapa:tática } } */
+function draftSeries(aId, bId, bo, plan) {
+  var A = T(aId), B = T(bId), pa = plan[aId] || null, pb = plan[bId] || null;
+  var veto = draftVeto(A, B, bo, pa && pa.pref, pb && pb.pref);
+  var need = Math.ceil(bo / 2), wa = 0, wb = 0, maps = [], replay = [];
+  for (var i = 0; i < veto.maps.length && wa < need && wb < need; i++) {
+    var e = veto.maps[i];
+    var s = newMapSim(A, B, e.map, { atkFirst:atkFirstFrom(e), pressao:bo >= 5, tacA:pa && pa.tat && pa.tat[e.map] || null, tacB:pb && pb.tat && pb.tat[e.map] || null });
+    s.ctrl = { A:!!(pa && pa.tat && pa.tat[e.map]), B:!!(pb && pb.tat && pb.tat[e.map]) };
+    finishMap(s);
+    maps.push(mapSummary(s));
+    replay.push({ map:e.map, atkFirst:s.atkFirst, compA:s.compA, compB:s.compB, rounds:s.rounds.map(slimRound), stats:s.stats, sa:s.sa, sb:s.sb, winner:s.winner });
+    if (s.winner === "A") wa++; else wb++;
+  }
+  var res = seriesResult(aId, bId, bo, maps, wa, wb, veto.log);
+  return { res:res, replay:replay };
+}
+/* Joga a rodada do campeonato; devolve os resultados com o replay de cada série. */
+function draftDay(plan) {
+  var ms = todayMatches(), out = [];
+  ms.forEach(function (m) {
+    var x = draftSeries(m.a, m.b, m.bo, plan || {});
+    evRecord(S.eventos[m.ei], m, x.res);
+    out.push({ m:{ a:m.a, b:m.b, bo:m.bo, label:m.label || "" }, res:{ a:x.res.a, b:x.res.b, wa:x.res.wa, wb:x.res.wb, winner:x.res.winner, veto:x.res.veto,
+      maps:x.res.maps.map(function (mp) { return { map:mp.map, sa:mp.sa, sb:mp.sb, winner:mp.winner }; }) }, replay:x.replay });
+  });
+  S.eventos.forEach(function (ev) { evEndDay(ev); });
+  Object.keys(S.players).forEach(function (id) { var p = S.players[id]; p.saude = 100; p.lesao = null; });
+  return out;
+}
+/* Aplica resultados já simulados (quem só acompanha a sala reconstrói a tabela sem simular). */
+function draftApply(day) {
+  todayMatches().forEach(function (m) {
+    var x = day.filter(function (d) { return d.res.a === m.a && d.res.b === m.b; })[0];
+    if (!x) return;
+    var r = x.res;
+    evRecord(S.eventos[m.ei], m, { a:r.a, b:r.b, bo:m.bo, wa:r.wa, wb:r.wb, winner:r.winner, loser:r.winner === r.a ? r.b : r.a, veto:r.veto || [],
+      maps:r.maps.map(function (mp) { return { map:mp.map, sa:mp.sa, sb:mp.sb, winner:mp.winner, rounds:[], stats:{} }; }) });
+  });
+  S.eventos.forEach(function (ev) { evEndDay(ev); });
+}
+function getState() { return S; }
+function setState(x) { S = x; if (x) rng = mulberry(((x.seed || 1) + (x.nextId || 1) * 7919) >>> 0); }
+
 window.VM = {
+  draftCards:draftCards, draftWorld:draftWorld, draftApply:draftApply, todayMatchesD:function () { return todayMatches(); }, draftDay:draftDay, draftSeries:draftSeries, draftForca:draftForca, getState:getState, setState:setState, ctl:ctl,
   MAP_TRAITS:MAP_TRAITS, mapTerm:mapTerm, ultMax:ultMax,
   get S() { return S; },
   CHAL:CHAL, isChal:isChal, EXTRA:EXTRA, SITES:SITES, ATK_PLANOS:ATK_PLANOS, DEF_SETUPS:DEF_SETUPS,

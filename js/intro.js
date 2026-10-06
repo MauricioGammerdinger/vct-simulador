@@ -72,7 +72,7 @@ function viewMenu() {
       esc(cur.manager) + " · Temporada " + cur.temporada + " · " + esc(cur.dif) + "</small></div></div>" +
       '<button class="btn primary big" data-a="iCarregar" data-v="' + cur.slot + '">Continuar carreira</button></div>';
   }
-  var items = [["iNovoSlot", "Novo jogo"], ["iModal", "Carreiras salvas", "slots"], ["iModal", "Como jogar", "tutorial"], ["iModal", "Importar save", "importar"], ["iModal", "Créditos", "creditos"]];
+  var items = [["iNovoSlot", "Novo jogo"], ["iDraft", "Modo Draft"], ["iModal", "Carreiras salvas", "slots"], ["iModal", "Como jogar", "tutorial"], ["iModal", "Importar save", "importar"], ["iModal", "Créditos", "creditos"]];
   if (cur) items.unshift(["iCarregar", "Continuar", String(cur.slot)]);
   function slotRow(n, novo) {
     var x = slots[n - 1];
@@ -267,6 +267,7 @@ ACT.iCarregar = function (v) {
   if (!VM.load(+v || VM.getSlot())) { G.toast("Não consegui ler o save.", false); return; }
   startLoading(VM.T(VM.S.userTeam).tag, function () { G.go("inicio"); });
 };
+ACT.iDraft = function () { if (window.DRAFT) window.DRAFT.abrir(); };
 ACT.iNovoSlot = function () {
   var free = [1, 2, 3].filter(function (n) { return !VM.slotInfo(n); })[0];
   if (free && !VM.hasSave()) { VM.setSlot(free); ACT.iNovo(); return; }

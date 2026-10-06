@@ -74,8 +74,10 @@ function render() {
   if (st && UI.scrollTop !== 0) UI.scrollTop = st.scrollTop;
   var html;
   var M = window.MATCH;
-  var IN = window.INTRO && window.INTRO.active();
-  if (IN) html = window.INTRO.view();
+  var DR = window.DRAFT && window.DRAFT.active();
+  var IN = !DR && window.INTRO && window.INTRO.active();
+  if (DR) html = window.DRAFT.view();
+  else if (IN) html = window.INTRO.view();
   else if (M && M.locked()) html = shell(M.view(), true);
   else if (S().demitido && window.CARREIRA) html = shell(window.CARREIRA.demitido(), true);
   else html = shell((VIEWS[UI.view] || VIEWS.inicio)(), false);
@@ -85,7 +87,8 @@ function render() {
   if (st2) st2.scrollTop = UI.scrollTop || 0;
   UI.scrollTop = null;
   if (!IN) { window.SFX_WANT_MUSIC = false; if (window.SFX) window.SFX.musicStop(); }
-  if (IN) window.INTRO.after();
+  if (DR) window.DRAFT.after();
+  else if (IN) window.INTRO.after();
   else if (M && M.locked() && M.after) M.after();
   else if (window.TELAS) window.TELAS.after();
 }
